@@ -1,0 +1,37 @@
+node_modules/
+dist/
+*.log
+*.tsbuildinfo
+.env
+.env.local
+*.db
+*.sqlite
+*.sqlite-journal
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+coverage/
+
+# Claude Code per-project settings — may contain tenant URLs / users
+.claude/settings.local.json
+.claude/settings.json
+
+# Transformers.js cache (lazy-downloaded models)
+.cache/
+
+# Capitu generated artifacts — keep folder structure, ignore contents.
+# Files written by capituSpecExportDocx, capituDevDocumentObject, etc.
+capitu-output/**
+!capitu-output/README.md
+!capitu-output/.gitkeep
+!capitu-output/*/
+!capitu-output/*/.gitkeep
+
+# Project-level MCP config — generated locally per user via SETUP.md.
+# Use .mcp.example.json as template.
+.mcp.json
+
+# Smoke / integration scripts — local only (hit live SAP).
+scripts/smoke-test-adt*.ts
+scripts/integration-test-adt.ts

@@ -1,0 +1,24 @@
+{
+  "name": "@capitu/dev-mcp",
+  "version": "0.0.1",
+  "private": true,
+  "description": "capitu-dev: MCP server for ABAP development via ADT (read/write objects, syntax check, activation, where-used)",
+  "type": "module",
+  "main": "./src/server.ts",
+  "exports": {
+    ".": "./src/server.ts"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "start": "tsx src/server.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@capitu/adt-client": "*",
+    "@capitu/kb": "*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.23.5"
+  }
+}

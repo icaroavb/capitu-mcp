@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/kb" },
+    { "path": "./packages/adt-client" },
+    { "path": "./packages/docs-mcp" },
+    { "path": "./packages/dev-mcp" },
+    { "path": "./packages/spec-mcp" }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "_comment": "Template do arquivo .mcp.json. Copie este arquivo para .mcp.json e edite os valores. .mcp.json está no .gitignore.",
+  "mcpServers": {
+    "capitu-docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "tsx",
+        "<CAMINHO_ABSOLUTO_DO_PROJETO>/packages/docs-mcp/src/server.ts"
+      ],
+      "env": {
+        "SAP_URL": "<URL_DO_SEU_TENANT>",
+        "SAP_USER": "<SEU_USUARIO_SAP>",
+        "SAP_CLIENT": "<MANDANT>",
+        "SAP_LANGUAGE": "<IDIOMA>",
+        "CAPITU_KB_PATH": "<HOME>/.capitu/kb.db",
+        "CAPITU_COMPLIANCE_MODE": "strict",
+        "CAPITU_EMBEDDINGS": "bm25"
+      }
+    },
+    "capitu-dev": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "tsx",
+        "<CAMINHO_ABSOLUTO_DO_PROJETO>/packages/dev-mcp/src/server.ts"
+      ],
+      "env": {
+        "SAP_URL": "<URL_DO_SEU_TENANT>",
+        "SAP_USER": "<SEU_USUARIO_SAP>",
+        "SAP_CLIENT": "<MANDANT>",
+        "SAP_LANGUAGE": "<IDIOMA>",
+        "CAPITU_KB_PATH": "<HOME>/.capitu/kb.db",
+        "CAPITU_COMPLIANCE_MODE": "strict",
+        "CAPITU_EMBEDDINGS": "bm25",
+        "CAPITU_ALLOW_WRITES": "false",
+        "CAPITU_ALLOWED_PACKAGES": "$TMP"
+      }
+    },
+    "capitu-spec": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "tsx",
+        "<CAMINHO_ABSOLUTO_DO_PROJETO>/packages/spec-mcp/src/server.ts"
+      ],
+      "env": {
+        "SAP_URL": "<URL_DO_SEU_TENANT>",
+        "SAP_USER": "<SEU_USUARIO_SAP>",
+        "SAP_CLIENT": "<MANDANT>",
+        "SAP_LANGUAGE": "<IDIOMA>",
+        "CAPITU_KB_PATH": "<HOME>/.capitu/kb.db",
+        "CAPITU_COMPLIANCE_MODE": "strict",
+        "CAPITU_EMBEDDINGS": "bm25"
+      }
+    }
+  }
+}
