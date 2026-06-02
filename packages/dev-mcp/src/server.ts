@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { CompliancePolicyViolation } from '@capitu/kb';
+import { CompliancePolicyViolation, isToolEnabled } from '@capitu/kb';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -7,6 +7,24 @@ import { type ServerContext, buildContext, shutdownContext } from './context.js'
 import { zodToJsonSchema } from './schema.js';
 import { runTool } from './tool.js';
 import { ALL_TOOLS } from './tools/index.js';
+
+/**
+ * Instance-management tools are NEVER hidden by tool-visibility config —
+ * hiding them would lock the user out of switching/inspecting instances.
+ */
+function isAlwaysOnTool(name: string): boolean {
+  return (
+    name.endsWith('ListInstances') ||
+    name.endsWith('WhichInstance') ||
+    name.endsWith('UseInstance')
+  );
+}
+
+/** A tool is exposed unless the instances.json `tools` map disables it. */
+function toolExposed(name: string, visibility?: Record<string, boolean>): boolean {
+  if (isAlwaysOnTool(name)) return true;
+  return isToolEnabled(name, visibility);
+}
 
 const VERSION = '0.0.1';
 
@@ -27,7 +45,7 @@ export async function main(): Promise<void> {
   );
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: ALL_TOOLS.map((t) => ({
+    tools: ALL_TOOLS.filter((t) => toolExposed(t.name, ctx.toolVisibility)).map((t) => ({
       name: t.name,
       description: t.description,
       inputSchema: zodToJsonSchema(t.inputSchema),
@@ -40,6 +58,18 @@ export async function main(): Promise<void> {
       return {
         isError: true,
         content: [{ type: 'text', text: `Unknown tool: ${req.params.name}` }],
+      };
+    }
+    // Defense in depth: a disabled tool must not run even if called directly.
+    if (!toolExposed(tool.name, ctx.toolVisibility)) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: `Tool '${tool.name}' is disabled via instances.json "tools" config.`,
+          },
+        ],
       };
     }
     try {

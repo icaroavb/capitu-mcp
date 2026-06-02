@@ -9,8 +9,17 @@ export {
   InstanceRegistry,
   type RegistryProfile,
   type RegistryBridge,
+  type RegistryAuthMode,
+  type InstanceSafety,
   type InstanceSummary,
 } from './instance-registry.js';
+export {
+  probeFeatures,
+  classifyFeatureStatus,
+  FEATURE_PROBES,
+  type FeatureId,
+  type FeatureStatus,
+} from './features.js';
 export {
   BDEF_COLLECTION,
   BDEF_CONTENT_TYPE,

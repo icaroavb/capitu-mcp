@@ -30,7 +30,7 @@ export interface StoredLearning extends Learning {
   createdAt: string;
 }
 
-export type TenantCatalogType = 'released_api' | 'odata_service' | 'cds_view';
+export type TenantCatalogType = 'released_api' | 'odata_service' | 'cds_view' | 'feature';
 
 export interface TenantCatalogEntry {
   type: TenantCatalogType;

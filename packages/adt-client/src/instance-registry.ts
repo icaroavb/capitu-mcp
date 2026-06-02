@@ -8,6 +8,8 @@ import type { SapEdition } from './types.js';
  * (the dependency direction is kb ← adt-client, never the reverse). The MCP
  * context layer, which already imports both packages, wires them together.
  */
+export type RegistryAuthMode = 'basic' | 'cookie' | 'bearer';
+
 export interface RegistryProfile {
   name: string;
   url: string;
@@ -16,6 +18,25 @@ export interface RegistryProfile {
   language?: string;
   edition?: SapEdition;
   insecureSkipTlsVerify?: boolean;
+  /** Auth strategy. Default 'basic'. */
+  authMode?: RegistryAuthMode;
+  // Per-instance safety (the ceiling intersection is applied in the MCP context
+  // layer; the registry just carries the declared values for exposure).
+  /** Explicit read-only flag from the profile (undefined = not declared). */
+  readOnly?: boolean;
+  /** Per-instance package allowlist from the profile (undefined = not declared). */
+  allowedPackages?: string[];
+}
+
+/**
+ * Per-instance safety as declared in the profile (before intersecting with the
+ * env ceiling — that happens in the MCP context layer). `readOnlyDeclared` is
+ * undefined when the profile didn't set `readOnly` at all, which the context
+ * treats as the restrictive default.
+ */
+export interface InstanceSafety {
+  readOnlyDeclared?: boolean;
+  allowedPackages?: string[];
 }
 
 /**
@@ -23,13 +44,16 @@ export interface RegistryProfile {
  * injected so the registry stays storage-agnostic:
  *   - getActive/setActive bridge to the `meta` table in the shared SQLite KB,
  *     which is how the three separate MCP processes agree on one active system.
- *   - resolvePassword bridges to the env-var password lookup. The registry
- *     never sees a password until it must build a client, and never stores one.
+ *   - resolvePassword/Cookie/Bearer bridge to the env-var / file secret lookups.
+ *     The registry never sees a secret until it must build a client, and never
+ *     stores one. resolveCookie/resolveBearer are only called for their modes.
  */
 export interface RegistryBridge {
   getActive: () => string | null;
   setActive: (name: string) => void;
   resolvePassword: (profile: RegistryProfile) => string;
+  resolveCookie?: (profile: RegistryProfile) => string;
+  resolveBearer?: (profile: RegistryProfile) => () => Promise<string>;
 }
 
 /** Non-secret summary of an instance — safe to return to the LLM/user. */
@@ -40,6 +64,9 @@ export interface InstanceSummary {
   client?: string;
   language?: string;
   edition: SapEdition;
+  authMode: RegistryAuthMode;
+  /** Whether the profile explicitly declared read-only (undefined = default-restrictive). */
+  readOnly?: boolean;
   isActive: boolean;
 }
 
@@ -102,8 +129,23 @@ export class InstanceRegistry {
       client: p.client,
       language: p.language,
       edition: p.edition ?? classifyEdition(p.url),
+      authMode: p.authMode ?? 'basic',
+      readOnly: p.readOnly,
       isActive: p.name === active,
     }));
+  }
+
+  /**
+   * Declared safety of the active instance (before env-ceiling intersection).
+   * The MCP context layer combines this with CAPITU_ALLOW_WRITES /
+   * CAPITU_ALLOWED_PACKAGES to compute the effective gate.
+   */
+  activeSafety(): InstanceSafety {
+    const profile = this.profiles.get(this.activeName());
+    return {
+      readOnlyDeclared: profile?.readOnly,
+      allowedPackages: profile?.allowedPackages,
+    };
   }
 
   /**
@@ -164,14 +206,42 @@ export class InstanceRegistry {
     if (!profile) {
       throw new Error(`Unknown instance "${name}".`);
     }
-    const client = new CapituAdtClient({
+    const mode = profile.authMode ?? 'basic';
+    const base = {
       url: profile.url,
       user: profile.user,
-      password: this.bridge.resolvePassword(profile),
       client: profile.client,
       language: profile.language,
       insecureSkipTlsVerify: profile.insecureSkipTlsVerify,
-    });
+    };
+    let client: CapituAdtClient;
+    if (mode === 'cookie') {
+      if (!this.bridge.resolveCookie) {
+        throw new Error(`Instance "${name}" uses authMode "cookie" but no cookie resolver is wired.`);
+      }
+      client = new CapituAdtClient({
+        ...base,
+        password: '',
+        authMode: 'cookie',
+        cookie: this.bridge.resolveCookie(profile),
+      });
+    } else if (mode === 'bearer') {
+      if (!this.bridge.resolveBearer) {
+        throw new Error(`Instance "${name}" uses authMode "bearer" but no bearer resolver is wired.`);
+      }
+      client = new CapituAdtClient({
+        ...base,
+        password: '',
+        authMode: 'bearer',
+        bearerToken: this.bridge.resolveBearer(profile),
+      });
+    } else {
+      client = new CapituAdtClient({
+        ...base,
+        password: this.bridge.resolvePassword(profile),
+        authMode: 'basic',
+      });
+    }
     this.clients.set(name, client);
     return client;
   }

@@ -29,6 +29,9 @@ export const ACTIVE_INSTANCE_META_KEY = 'active_instance';
 
 export type SapEditionHint = 'on-prem' | 'pce' | 'public-cloud' | 'btp-abap' | 'unknown';
 
+/** How a profile authenticates against SAP. Default 'basic'. */
+export type InstanceAuthMode = 'basic' | 'cookie' | 'bearer';
+
 export interface InstanceProfile {
   /** Stable handle the user types: "cliente-x-dev", "qas", … */
   name: string;
@@ -47,16 +50,55 @@ export interface InstanceProfile {
   passwordEnv?: string;
   /** Allow self-signed certs (sandbox only). */
   insecureSkipTlsVerify?: boolean;
+
+  // --- Per-instance safety (ceiling model) ----------------------------------
+  // These can only RESTRICT further than the server-wide env ceiling
+  // (CAPITU_ALLOW_WRITES / CAPITU_ALLOWED_PACKAGES), never widen it.
+  /**
+   * When true (or omitted — restrictive default), writes to this instance are
+   * blocked regardless of CAPITU_ALLOW_WRITES. Set `false` explicitly to allow
+   * writes (still capped by the env ceiling).
+   */
+  readOnly?: boolean;
+  /**
+   * Package allowlist for THIS instance. Intersected with the env ceiling
+   * (a profile can only narrow it). Omitted → inherits the env allowlist.
+   */
+  allowedPackages?: string[];
+
+  // --- Auth mode (basic | cookie | bearer) -----------------------------------
+  /** Authentication strategy. Default 'basic' (passwordEnv). */
+  authMode?: InstanceAuthMode;
+  /** cookie mode: path to a file whose contents are sent as the Cookie header. */
+  cookieFile?: string;
+  /** cookie mode: inline cookie string (alternative to cookieFile). */
+  cookieString?: string;
+  /** bearer mode: name of the env var holding the OAuth bearer token. */
+  bearerEnv?: string;
 }
 
 export interface InstanceProfilesResult {
   instances: InstanceProfile[];
   /** Initial active instance declared in the file, if any. */
   active?: string;
+  /**
+   * Tool visibility map from the file root: tool name → enabled. A tool not
+   * listed is enabled by default. Mirrors vsp's SystemsConfig.Tools.
+   */
+  tools?: Record<string, boolean>;
   /** Where the profiles came from — useful for diagnostics. */
   source: 'file' | 'env-fallback' | 'empty';
   /** Absolute path consulted (even if it didn't exist). */
   path: string;
+}
+
+/**
+ * Tool-visibility check. Tools not present in the map are enabled by default;
+ * an explicit `false` disables. A nullish map means "everything enabled".
+ */
+export function isToolEnabled(name: string, tools?: Record<string, boolean>): boolean {
+  if (!tools) return true;
+  return tools[name] !== false;
 }
 
 /** Resolve the instances.json path: explicit env override, else ~/.capitu/instances.json. */
@@ -91,13 +133,20 @@ export function loadInstanceProfiles(env: NodeJS.ProcessEnv = process.env): Inst
   if (raw !== undefined) {
     const instances = parseInstancesFile(raw, path);
     let parsedActive: string | undefined;
+    let tools: Record<string, boolean> | undefined;
     try {
-      const obj = JSON.parse(raw) as { active?: unknown };
+      const obj = JSON.parse(raw) as { active?: unknown; tools?: unknown };
       if (typeof obj.active === 'string' && obj.active.trim()) parsedActive = obj.active.trim();
+      if (obj.tools && typeof obj.tools === 'object' && !Array.isArray(obj.tools)) {
+        tools = {};
+        for (const [k, v] of Object.entries(obj.tools as Record<string, unknown>)) {
+          if (typeof v === 'boolean') tools[k] = v;
+        }
+      }
     } catch {
       // parseInstancesFile already threw on invalid JSON; unreachable.
     }
-    return { instances, active: parsedActive, source: 'file', path };
+    return { instances, active: parsedActive, tools, source: 'file', path };
   }
 
   // Fallback: synthesize one instance from legacy env vars.
@@ -149,6 +198,30 @@ function parseInstancesFile(raw: string, path: string): InstanceProfile[] {
     if (!user) throw new Error(`instance "${name}" in ${path} is missing "user".`);
     if (seen.has(name)) throw new Error(`instance name "${name}" is duplicated in ${path}.`);
     seen.add(name);
+
+    // allowedPackages: array of strings if present.
+    let allowedPackages: string[] | undefined;
+    if (e.allowedPackages !== undefined) {
+      if (
+        !Array.isArray(e.allowedPackages) ||
+        !e.allowedPackages.every((p) => typeof p === 'string')
+      ) {
+        throw new Error(`instance "${name}" in ${path}: "allowedPackages" must be an array of strings.`);
+      }
+      allowedPackages = e.allowedPackages as string[];
+    }
+
+    // authMode: one of basic|cookie|bearer if present.
+    let authMode: InstanceAuthMode | undefined;
+    if (e.authMode !== undefined) {
+      if (e.authMode !== 'basic' && e.authMode !== 'cookie' && e.authMode !== 'bearer') {
+        throw new Error(
+          `instance "${name}" in ${path}: "authMode" must be "basic", "cookie", or "bearer".`,
+        );
+      }
+      authMode = e.authMode;
+    }
+
     return {
       name,
       url,
@@ -161,6 +234,12 @@ function parseInstancesFile(raw: string, path: string): InstanceProfile[] {
           ? e.passwordEnv.trim()
           : 'SAP_PASSWORD',
       insecureSkipTlsVerify: e.insecureSkipTlsVerify === true,
+      readOnly: typeof e.readOnly === 'boolean' ? e.readOnly : undefined,
+      allowedPackages,
+      authMode,
+      cookieFile: typeof e.cookieFile === 'string' && e.cookieFile.trim() ? e.cookieFile.trim() : undefined,
+      cookieString: typeof e.cookieString === 'string' ? e.cookieString : undefined,
+      bearerEnv: typeof e.bearerEnv === 'string' && e.bearerEnv.trim() ? e.bearerEnv.trim() : undefined,
     };
   });
 }
@@ -199,4 +278,58 @@ export function resolvePassword(
     );
   }
   return value;
+}
+
+/**
+ * Resolve the Cookie header value for a cookie-auth profile: the inline
+ * `cookieString`, else the contents of `cookieFile` (trimmed). Throws a
+ * semantic error when neither yields a value.
+ */
+export function resolveCookie(profile: InstanceProfile): string {
+  if (profile.cookieString && profile.cookieString.trim()) return profile.cookieString.trim();
+  if (profile.cookieFile) {
+    let content: string;
+    try {
+      content = readFileSync(profile.cookieFile, 'utf8');
+    } catch (err) {
+      throw new Error(
+        `Cookie for instance "${profile.name}" could not be read from cookieFile ` +
+          `"${profile.cookieFile}": ${err instanceof Error ? err.message : String(err)}.`,
+      );
+    }
+    const trimmed = content.trim();
+    if (trimmed) return trimmed;
+  }
+  throw new Error(
+    `Instance "${profile.name}" uses authMode "cookie" but neither cookieString nor a ` +
+      'non-empty cookieFile was provided.',
+  );
+}
+
+/**
+ * Build a BearerFetcher for a bearer-auth profile. The token lives in the env
+ * var named by `bearerEnv`. Returns a function (the shape abap-adt-api expects)
+ * so the token is read at connect time, not at config-load time.
+ */
+export function resolveBearer(
+  profile: InstanceProfile,
+  env: NodeJS.ProcessEnv = process.env,
+): () => Promise<string> {
+  const varName = profile.bearerEnv;
+  if (!varName) {
+    throw new Error(
+      `Instance "${profile.name}" uses authMode "bearer" but "bearerEnv" (the env var ` +
+        'holding the token) is not set.',
+    );
+  }
+  return async () => {
+    const token = env[varName];
+    if (!token) {
+      throw new Error(
+        `Bearer token for instance "${profile.name}" not found: environment variable ` +
+          `${varName} is unset. Set it as a persistent User env var and reopen Claude Code.`,
+      );
+    }
+    return token;
+  };
 }

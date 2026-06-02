@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type ServerContext, isPackageAllowed } from '../context.js';
+import { type ServerContext, assertWritesEnabled } from '../context.js';
 import {
   type IncludeKind,
   MethodSurgeryError,
@@ -87,16 +87,7 @@ export interface EditMethodOutput {
   errorMessage?: string;
 }
 
-function assertWritesEnabled(ctx: ServerContext, packageName: string): void {
-  if (!ctx.writes.allowed) {
-    throw new Error('Writes disabled. Set CAPITU_ALLOW_WRITES=true to enable capituDevEditMethod.');
-  }
-  if (!isPackageAllowed(packageName, ctx.writes.allowedPackages)) {
-    throw new Error(
-      `Package '${packageName}' blocked by capitu-dev SERVER configuration (not a tool input error). Server was started with CAPITU_ALLOWED_PACKAGES=[${ctx.writes.allowedPackages.join(', ')}]. Edit .mcp.json env and RELAUNCH Claude Code (env is read at process start; /mcp reload keeps the old env).`,
-    );
-  }
-}
+// Write gate shared from context.ts (assertWritesEnabled). No local copy.
 
 export const editMethodTool: CapituTool<typeof editMethodSchema, EditMethodOutput> = {
   name: 'capituDevEditMethod',

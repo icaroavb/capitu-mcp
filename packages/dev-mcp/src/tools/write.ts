@@ -1,6 +1,6 @@
 import { type CapituAdtClient, isLocalPackage } from '@capitu/adt-client';
 import { z } from 'zod';
-import { type ServerContext, isPackageAllowed } from '../context.js';
+import { type ServerContext, assertWritesEnabled } from '../context.js';
 import type { CapituTool } from '../tool.js';
 
 /**
@@ -25,32 +25,8 @@ async function effectiveTransport(
   return adt.pickDefaultTransport(packageName);
 }
 
-/**
- * Two safety layers protect writes (in addition to the compliance gate):
- *   1. CAPITU_ALLOW_WRITES=true must be set (writes.allowed)
- *   2. The target object's package must match CAPITU_ALLOWED_PACKAGES
- *
- * The compliance gate (Q33) already permits these as endorsed dev tooling,
- * but admin opt-in keeps writes off-by-default to prevent accidents.
- */
-function assertWritesEnabled(ctx: ServerContext, packageName: string | undefined): void {
-  if (!ctx.writes.allowed) {
-    throw new Error(
-      'Writes disabled. Set CAPITU_ALLOW_WRITES=true to enable. ' +
-        'Then ensure CAPITU_ALLOWED_PACKAGES covers the target package (default: $TMP).',
-    );
-  }
-  if (!packageName) {
-    throw new Error(
-      'Cannot determine target package — write blocked. Pass packageName explicitly.',
-    );
-  }
-  if (!isPackageAllowed(packageName, ctx.writes.allowedPackages)) {
-    throw new Error(
-      `Package '${packageName}' blocked by capitu-dev SERVER configuration (NOT a tool input error — the tool received the right packageName). The MCP server was started with CAPITU_ALLOWED_PACKAGES=[${ctx.writes.allowedPackages.join(', ')}]. To allow '${packageName}', either:\n  (a) edit the env var in .mcp.json under "capitu-dev".env.CAPITU_ALLOWED_PACKAGES (CSV; wildcards like 'Z*' supported), then EXIT and RELAUNCH the Claude Code session — /mcp reload alone keeps the same Node process and does NOT reread env;\n  (b) if the server is launched manually via terminal, re-export $env:CAPITU_ALLOWED_PACKAGES and restart the process.\nThe Allowed list is a deliberate safety gate (prevents accidental writes to SAP_BASIS / system namespaces); changing it is admin action, not a workaround.`,
-    );
-  }
-}
+// Write safety gate (env ceiling ∩ active-instance profile) lives in context.ts
+// as `assertWritesEnabled` — single source of truth shared by all write tools.
 
 // ---- CreateObject -----------------------------------------------------------
 

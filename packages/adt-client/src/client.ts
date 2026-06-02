@@ -60,7 +60,7 @@ export class CapituAdtClient {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     }
     this.connOpts = opts;
-    this.inner = new ADTClient(opts.url, opts.user, opts.password, opts.client, opts.language);
+    this.inner = buildInner(opts);
     this.url = opts.url;
     this.user = opts.user;
     this.client = opts.client;
@@ -85,13 +85,7 @@ export class CapituAdtClient {
       // ignore — the session may already be in a state where logout fails
     }
     this.loggedIn = false;
-    this.inner = new ADTClient(
-      this.connOpts.url,
-      this.connOpts.user,
-      this.connOpts.password,
-      this.connOpts.client,
-      this.connOpts.language,
-    );
+    this.inner = buildInner(this.connOpts);
   }
 
   /**
@@ -882,6 +876,46 @@ export class CapituAdtClient {
   isConnected(): boolean {
     return this.loggedIn;
   }
+}
+
+/**
+ * Construct the underlying abap-adt-api ADTClient honoring the auth mode.
+ *
+ *   - 'basic' (default): url/user/password, as before.
+ *   - 'bearer': abap-adt-api accepts a BearerFetcher in the password slot and
+ *     manages the Authorization header + token refresh itself. User is passed
+ *     through (some flows still reference it) but auth is the token.
+ *   - 'cookie': no password; the Cookie header is injected via ClientOptions.
+ *     The server treats the session cookie as the credential (SSO).
+ *
+ * Centralized so the constructor and recycleSession() build identical clients.
+ */
+function buildInner(opts: AdtConnectionOptions): ADTClient {
+  const mode = opts.authMode ?? 'basic';
+  if (mode === 'bearer') {
+    if (!opts.bearerToken) {
+      throw new Error('authMode "bearer" requires a bearerToken function.');
+    }
+    // The 3rd positional arg accepts `string | BearerFetcher` in abap-adt-api.
+    return new ADTClient(
+      opts.url,
+      opts.user,
+      opts.bearerToken as unknown as string,
+      opts.client,
+      opts.language,
+    );
+  }
+  if (mode === 'cookie') {
+    if (!opts.cookie) {
+      throw new Error('authMode "cookie" requires a cookie string.');
+    }
+    // Empty password; cookie carried via the client options headers.
+    return new ADTClient(opts.url, opts.user, '', opts.client, opts.language, {
+      headers: { Cookie: opts.cookie },
+    } as unknown as ConstructorParameters<typeof ADTClient>[5]);
+  }
+  // basic (or service-key, not yet implemented — falls back to basic shape)
+  return new ADTClient(opts.url, opts.user, opts.password, opts.client, opts.language);
 }
 
 // --- Normalization helpers ----------------------------------------------------

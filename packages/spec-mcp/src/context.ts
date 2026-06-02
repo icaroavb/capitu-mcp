@@ -6,6 +6,8 @@ import {
   loadComplianceFromEnv,
   loadInstanceProfiles,
   openKb,
+  resolveBearer,
+  resolveCookie,
   resolveEmbeddingsProvider,
   resolvePassword,
   setActiveInstance,
@@ -31,6 +33,8 @@ export interface ServerContext {
   registry: InstanceRegistry;
   compliance: ComplianceContext;
   agent: 'capitu-spec';
+  /** Tool-visibility map from instances.json (tool→enabled). Undefined = all on. */
+  toolVisibility?: Record<string, boolean>;
 }
 
 export interface ServerContextOptions {
@@ -40,11 +44,11 @@ export interface ServerContextOptions {
 
 export function buildContext(opts: ServerContextOptions = {}): ServerContext {
   const kb = openKb({ path: opts.kbPath });
-  const registry = buildInstanceRegistry(kb);
+  const { registry, toolVisibility } = buildInstanceRegistry(kb);
   const embeddings = opts.embeddings ?? resolveEmbeddingsProvider();
   const compliance = loadComplianceFromEnv();
 
-  const ctx = { kb, embeddings, registry, compliance, agent: 'capitu-spec' as const };
+  const ctx = { kb, embeddings, registry, compliance, agent: 'capitu-spec' as const, toolVisibility };
   Object.defineProperty(ctx, 'adt', {
     enumerable: true,
     get: () => registry.active(),
@@ -53,13 +57,17 @@ export function buildContext(opts: ServerContextOptions = {}): ServerContext {
 }
 
 /**
- * Wire a registry from the configured instance profiles + the shared KB.
- * Profiles from ~/.capitu/instances.json (or SAP_* fallback); active-instance
- * pointer in the KB `meta` table (shared across the 3 MCP processes); passwords
- * resolved lazily from env vars.
+ * Wire a registry from the configured instance profiles + the shared KB, and
+ * surface the tool-visibility map. Profiles from ~/.capitu/instances.json (or
+ * SAP_* fallback); active-instance pointer in the KB `meta` table; passwords/
+ * cookies/tokens resolved lazily.
  */
-export function buildInstanceRegistry(kb: Database): InstanceRegistry {
-  const { instances } = loadInstanceProfiles();
+export function buildInstanceRegistry(kb: Database): {
+  registry: InstanceRegistry;
+  toolVisibility?: Record<string, boolean>;
+} {
+  const { instances, tools } = loadInstanceProfiles();
+  const byName = new Map(instances.map((p) => [p.name, p]));
   const profiles: RegistryProfile[] = instances.map((p) => ({
     name: p.name,
     url: p.url,
@@ -68,16 +76,19 @@ export function buildInstanceRegistry(kb: Database): InstanceRegistry {
     language: p.language,
     edition: p.edition,
     insecureSkipTlsVerify: p.insecureSkipTlsVerify,
+    authMode: p.authMode,
+    readOnly: p.readOnly,
+    allowedPackages: p.allowedPackages,
   }));
-  const byName = new Map(instances.map((p) => [p.name, p]));
-  return new InstanceRegistry(profiles, {
+  const lookup = (name: string) => byName.get(name) ?? { name, url: '', user: '' };
+  const registry = new InstanceRegistry(profiles, {
     getActive: () => getActiveInstance(kb),
     setActive: (name) => setActiveInstance(kb, name),
-    resolvePassword: (profile) =>
-      resolvePassword(
-        byName.get(profile.name) ?? { name: profile.name, url: profile.url, user: profile.user },
-      ),
+    resolvePassword: (profile) => resolvePassword(lookup(profile.name)),
+    resolveCookie: (profile) => resolveCookie(lookup(profile.name)),
+    resolveBearer: (profile) => resolveBearer(lookup(profile.name)),
   });
+  return { registry, toolVisibility: tools };
 }
 
 export async function shutdownContext(ctx: ServerContext): Promise<void> {

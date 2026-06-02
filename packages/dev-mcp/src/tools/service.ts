@@ -23,7 +23,7 @@
 
 import { isLocalPackage } from '@capitu/adt-client';
 import { z } from 'zod';
-import { type ServerContext, isPackageAllowed } from '../context.js';
+import { type ServerContext, assertWritesEnabled } from '../context.js';
 import type { CapituTool } from '../tool.js';
 
 /**
@@ -47,21 +47,7 @@ function isPublishSuccess(severity: string): boolean {
   return SUCCESS_SEVERITIES.has(severity.toUpperCase());
 }
 
-// ─── Shared helpers (mirror of write.ts, kept local to avoid circular imports) ─
-
-function assertWritesEnabled(ctx: ServerContext, packageName: string | undefined): void {
-  if (!ctx.writes.allowed) {
-    throw new Error('Writes disabled. Set CAPITU_ALLOW_WRITES=true.');
-  }
-  if (!packageName) {
-    throw new Error('Cannot determine target package. Pass packageName explicitly.');
-  }
-  if (!isPackageAllowed(packageName, ctx.writes.allowedPackages)) {
-    throw new Error(
-      `Package '${packageName}' blocked by capitu-dev SERVER configuration. Server was started with CAPITU_ALLOWED_PACKAGES=[${ctx.writes.allowedPackages.join(', ')}]. Edit .mcp.json and relaunch Claude Code to change.`,
-    );
-  }
-}
+// Write gate shared from context.ts (assertWritesEnabled). No local copy.
 
 async function effectiveTransport(
   ctx: ServerContext,

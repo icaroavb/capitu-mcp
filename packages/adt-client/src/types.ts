@@ -12,11 +12,15 @@ export type SapEdition =
   | 'btp-abap' // BTP ABAP Environment (Steampunk)
   | 'unknown';
 
-export type AuthMode = 'basic' | 'service-key';
+export type AuthMode = 'basic' | 'cookie' | 'bearer' | 'service-key';
 
 export interface AdtConnectionOptions {
   url: string;
   user: string;
+  /**
+   * Password for basic auth. Required when authMode is 'basic' (or omitted).
+   * Ignored for 'cookie'/'bearer' (pass '' there).
+   */
   password: string;
   client?: string;
   /**
@@ -31,7 +35,19 @@ export interface AdtConnectionOptions {
    * the full dev workflow is supported out of the box.
    */
   sessionMode?: 'stateful' | 'stateless';
+  /** Auth strategy. Default 'basic'. */
   authMode?: AuthMode;
+  /**
+   * cookie mode: the full Cookie header value (e.g. "MYSAPSSO2=...; SAP_SESSIONID_...").
+   * abap-adt-api sends it via the underlying HTTP client headers.
+   */
+  cookie?: string;
+  /**
+   * bearer mode: a function returning the OAuth bearer token. abap-adt-api's
+   * ADTClient accepts a BearerFetcher in the password slot and handles the
+   * Authorization header + refresh lifecycle.
+   */
+  bearerToken?: () => Promise<string>;
   /** Allow self-signed certificates (sandbox only). */
   insecureSkipTlsVerify?: boolean;
 }

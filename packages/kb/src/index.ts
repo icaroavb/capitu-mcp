@@ -59,9 +59,13 @@ export {
   getActiveInstance,
   setActiveInstance,
   resolvePassword,
+  resolveCookie,
+  resolveBearer,
+  isToolEnabled,
   ACTIVE_INSTANCE_META_KEY,
   type InstanceProfile,
   type InstanceProfilesResult,
+  type InstanceAuthMode,
   type SapEditionHint,
 } from './instances.js';
 export type {
