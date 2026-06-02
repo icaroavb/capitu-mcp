@@ -53,17 +53,14 @@ export function getProposal<TPayload>(
   db: Database,
   token: string,
 ): ProposalRecord<TPayload> | null {
-  const row = db
-    .prepare('SELECT * FROM spec_proposals WHERE token = ?')
-    .get(token) as Record<string, unknown> | undefined;
+  const row = db.prepare('SELECT * FROM spec_proposals WHERE token = ?').get(token) as
+    | Record<string, unknown>
+    | undefined;
   if (!row) return null;
   return rowToProposal<TPayload>(row);
 }
 
-export function listProposals(
-  db: Database,
-  status?: ProposalStatus,
-): ProposalRecord[] {
+export function listProposals(db: Database, status?: ProposalStatus): ProposalRecord[] {
   const sql = status
     ? 'SELECT * FROM spec_proposals WHERE status = ? ORDER BY created_at DESC'
     : 'SELECT * FROM spec_proposals ORDER BY created_at DESC';
@@ -90,9 +87,7 @@ export function updateProposalStatus(
   });
 }
 
-function rowToProposal<TPayload = unknown>(
-  row: Record<string, unknown>,
-): ProposalRecord<TPayload> {
+function rowToProposal<TPayload = unknown>(row: Record<string, unknown>): ProposalRecord<TPayload> {
   return {
     token: row.token as string,
     title: row.title as string,

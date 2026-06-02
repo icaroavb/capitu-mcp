@@ -15,7 +15,10 @@
 import type { Artifact } from './spec-model.js';
 
 /** Rationale for one artifact based on its kind + context. */
-export function rationaleFor(art: Artifact): { bullets: string[]; annotationsExplained?: Record<string, string> } {
+export function rationaleFor(art: Artifact): {
+  bullets: string[];
+  annotationsExplained?: Record<string, string>;
+} {
   switch (art.kind) {
     case 'cds-interface':
       return {
@@ -125,7 +128,9 @@ export function rationaleFor(art: Artifact): { bullets: string[]; annotationsExp
 
     case 'class':
       return {
-        bullets: ['Classe utilitária ABAP padrão — sem template específico, source deve ser fornecido.'],
+        bullets: [
+          'Classe utilitária ABAP padrão — sem template específico, source deve ser fornecido.',
+        ],
       };
 
     case 'interface':

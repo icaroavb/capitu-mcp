@@ -56,9 +56,7 @@ export class VoyageEmbeddings implements EmbeddingsProvider {
     const data = (await res.json()) as {
       data: Array<{ embedding: number[]; index: number }>;
     };
-    return data.data
-      .sort((a, b) => a.index - b.index)
-      .map((d) => d.embedding);
+    return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
   }
 }
 
@@ -96,7 +94,9 @@ export class NullEmbeddings implements EmbeddingsProvider {
  * any tool that needed an embedding would crash on first use. NullEmbeddings
  * is always safe — every tool keeps working, just without semantic search.
  */
-export function resolveEmbeddingsProvider(env: NodeJS.ProcessEnv = process.env): EmbeddingsProvider {
+export function resolveEmbeddingsProvider(
+  env: NodeJS.ProcessEnv = process.env,
+): EmbeddingsProvider {
   const choice = env.CAPITU_EMBEDDINGS?.toLowerCase();
   if (choice === 'voyage') return new VoyageEmbeddings();
   if (choice === 'local') return new LocalEmbeddings();
@@ -162,8 +162,7 @@ export class LocalEmbeddings implements EmbeddingsProvider {
       const arr = Array.from(result.data);
       if (arr.length !== this.dim) {
         throw new Error(
-          `LocalEmbeddings: model returned ${arr.length} dims, expected ${this.dim}. ` +
-            `Re-create the KB with a matching EMBEDDING_DIM.`,
+          `LocalEmbeddings: model returned ${arr.length} dims, expected ${this.dim}. Re-create the KB with a matching EMBEDDING_DIM.`,
         );
       }
       out.push(arr);

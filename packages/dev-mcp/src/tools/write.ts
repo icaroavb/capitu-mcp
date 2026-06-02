@@ -1,6 +1,29 @@
+import { type CapituAdtClient, isLocalPackage } from '@capitu/adt-client';
 import { z } from 'zod';
-import { isPackageAllowed, type ServerContext } from '../context.js';
+import { type ServerContext, isPackageAllowed } from '../context.js';
 import type { CapituTool } from '../tool.js';
+
+/**
+ * Decide which transport to use for an operation against `packageName`:
+ *
+ *   - $TMP / any $* local package         → undefined (ADT rejects corrNr)
+ *   - transportable + explicit transport  → that transport (after trim check)
+ *   - transportable + no transport given  → auto-pick the user's first open
+ *                                            workbench TR. Throws with an
+ *                                            actionable message if zero.
+ *
+ * Centralized here so dev-mcp's three write tools all share the same rules,
+ * and any future change to "what counts as a default TR" lives in one place.
+ */
+async function effectiveTransport(
+  adt: CapituAdtClient,
+  packageName: string,
+  transport: string | undefined,
+): Promise<string | undefined> {
+  if (isLocalPackage(packageName)) return undefined;
+  if (transport?.trim()) return transport.trim();
+  return adt.pickDefaultTransport(packageName);
+}
 
 /**
  * Two safety layers protect writes (in addition to the compliance gate):
@@ -24,9 +47,7 @@ function assertWritesEnabled(ctx: ServerContext, packageName: string | undefined
   }
   if (!isPackageAllowed(packageName, ctx.writes.allowedPackages)) {
     throw new Error(
-      `Package '${packageName}' is not in the allowlist. ` +
-        `Allowed: [${ctx.writes.allowedPackages.join(', ')}]. ` +
-        'Update CAPITU_ALLOWED_PACKAGES env var to grant access.',
+      `Package '${packageName}' blocked by capitu-dev SERVER configuration (NOT a tool input error — the tool received the right packageName). The MCP server was started with CAPITU_ALLOWED_PACKAGES=[${ctx.writes.allowedPackages.join(', ')}]. To allow '${packageName}', either:\n  (a) edit the env var in .mcp.json under "capitu-dev".env.CAPITU_ALLOWED_PACKAGES (CSV; wildcards like 'Z*' supported), then EXIT and RELAUNCH the Claude Code session — /mcp reload alone keeps the same Node process and does NOT reread env;\n  (b) if the server is launched manually via terminal, re-export $env:CAPITU_ALLOWED_PACKAGES and restart the process.\nThe Allowed list is a deliberate safety gate (prevents accidental writes to SAP_BASIS / system namespaces); changing it is admin action, not a workaround.`,
     );
   }
 }
@@ -43,11 +64,13 @@ const createObjectSchema = z.object({
       'TABL/DT', // Database table (transparent)
       'DOMA/DD', // Domain
       'DTEL/DE', // Data element
+      'SRVD/SRV', // Service Definition (RAP)
       'PROG/P', // Report
       'PROG/I', // Include
     ])
     .describe(
-      'ADT type code. Most common: DDLS/DF (CDS view), CLAS/OC (class), INTF/OI (interface), DCLS/DL (access control), TABL/DT (table)',
+      'ADT type code. Most common: DDLS/DF (CDS view), CLAS/OC (class), INTF/OI (interface), DCLS/DL (access control), TABL/DT (table), SRVD/SRV (service definition). ' +
+        'NOTE: BDEF/BDO (behavior definition) and SRVB/SVB (service binding) are NOT in this enum — they go through dedicated tools because abap-adt-api does not expose them in CreatableTypeIds. Use capituDevCreateServiceBinding for SRVB; for BDEF use capituSpecApply with kind:"behavior-definition".',
     ),
   name: z
     .string()
@@ -87,12 +110,13 @@ export const createObjectTool: CapituTool<typeof createObjectSchema, CreateObjec
   inputSchema: createObjectSchema,
   handler: async (input, ctx) => {
     assertWritesEnabled(ctx, input.packageName);
+    const transport = await effectiveTransport(ctx.adt, input.packageName, input.transport);
     await ctx.adt.createObject({
       objectType: input.objectType,
       name: input.name,
       description: input.description,
       packageName: input.packageName,
-      transport: input.transport,
+      transport,
     });
 
     // Build the URIs that subsequent calls will need.
@@ -125,6 +149,7 @@ const applyArtifactSchema = z.object({
     'TABL/DT',
     'DOMA/DD',
     'DTEL/DE',
+    'SRVD/SRV',
     'PROG/P',
     'PROG/I',
   ]),
@@ -175,6 +200,8 @@ export const applyArtifactTool: CapituTool<typeof applyArtifactSchema, ApplyArti
     const sourceUri = `${uri}/source/main`;
     const steps: ApplyArtifactOutput['steps'] = [];
 
+    const transport = await effectiveTransport(ctx.adt, input.packageName, input.transport);
+
     // Step 1: create
     const t0 = Date.now();
     try {
@@ -183,7 +210,7 @@ export const applyArtifactTool: CapituTool<typeof applyArtifactSchema, ApplyArti
         name: input.name,
         description: input.description,
         packageName: input.packageName,
-        transport: input.transport,
+        transport,
       });
       steps.push({ step: 'create', status: 'ok', durationMs: Date.now() - t0 });
     } catch (err) {
@@ -233,7 +260,7 @@ export const applyArtifactTool: CapituTool<typeof applyArtifactSchema, ApplyArti
       }
       const lock = await ctx.adt.lock(uri);
       try {
-        await ctx.adt.writeSource(sourceUri, input.source, lock.lockHandle, input.transport);
+        await ctx.adt.writeSource(sourceUri, input.source, lock.lockHandle, transport);
       } finally {
         try {
           await ctx.adt.unlock(uri, lock.lockHandle);
@@ -325,6 +352,8 @@ function buildObjectUri(objectType: string, lowerName: string): string {
       return `/sap/bc/adt/ddic/domains/${lowerName}`;
     case 'DTEL/DE':
       return `/sap/bc/adt/ddic/dataelements/${lowerName}`;
+    case 'SRVD/SRV':
+      return `/sap/bc/adt/ddic/srvd/sources/${lowerName}`;
     case 'PROG/P':
       return `/sap/bc/adt/programs/programs/${lowerName}`;
     case 'PROG/I':
@@ -382,10 +411,7 @@ export const syntaxCheckTool: CapituTool<typeof syntaxCheckSchema, SyntaxCheckOu
 // ---- WriteObject ------------------------------------------------------------
 
 const writeObjectSchema = z.object({
-  sourceUri: z
-    .string()
-    .min(1)
-    .describe('ADT source URI ending in /source/main.'),
+  sourceUri: z.string().min(1).describe('ADT source URI ending in /source/main.'),
   objectUri: z
     .string()
     .min(1)
@@ -430,7 +456,12 @@ export const writeObjectTool: CapituTool<typeof writeObjectSchema, WriteObjectOu
     let syntaxOk = true;
     if (!input.skipSyntaxCheck) {
       const fs = await ctx.adt.syntaxCheck(input.sourceUri, input.source);
-      syntaxFindings = fs.map((f) => ({ severity: f.severity, line: f.line, offset: f.offset, text: f.text }));
+      syntaxFindings = fs.map((f) => ({
+        severity: f.severity,
+        line: f.line,
+        offset: f.offset,
+        text: f.text,
+      }));
       syntaxOk = fs.every((f) => f.severity !== 'error');
       if (!syntaxOk) {
         return {
@@ -442,11 +473,12 @@ export const writeObjectTool: CapituTool<typeof writeObjectSchema, WriteObjectOu
       }
     }
 
+    const transport = await effectiveTransport(ctx.adt, input.packageName, input.transport);
     const lock = await ctx.adt.lock(input.objectUri);
     let written = false;
     let lockReleased = false;
     try {
-      await ctx.adt.writeSource(input.sourceUri, input.source, lock.lockHandle, input.transport);
+      await ctx.adt.writeSource(input.sourceUri, input.source, lock.lockHandle, transport);
       written = true;
     } finally {
       // Always try to release the lock, even if write fails.
@@ -461,15 +493,89 @@ export const writeObjectTool: CapituTool<typeof writeObjectSchema, WriteObjectOu
   },
 };
 
+// ---- WriteClassBundle (main + CCIMP under one lock) ------------------------
+
+const writeClassBundleSchema = z.object({
+  classObjectUri: z
+    .string()
+    .min(1)
+    .describe(
+      'ADT object URI of the class (NOT the source URI). Example: /sap/bc/adt/oo/classes/zbp_i_purchase_req',
+    ),
+  packageName: z
+    .string()
+    .min(1)
+    .describe('Package the class belongs to. Validated against CAPITU_ALLOWED_PACKAGES.'),
+  transport: z
+    .string()
+    .optional()
+    .describe('Optional transport request number. Omit for $TMP objects.'),
+  sources: z
+    .array(
+      z.object({
+        include: z.enum(['main', 'definitions', 'implementations', 'macros', 'testclasses']),
+        source: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .max(5)
+    .describe(
+      'Ordered list of {include, source}. Main is always written first regardless of array order. ' +
+        'Use "main" for the global class definition/implementation, "implementations" for the local ' +
+        'handler class (lhc_*) in a RAP behavior pool. CCIMP and main MUST be written together for ' +
+        'a fresh class — the include resource only materializes inside the same session that wrote main.',
+    ),
+  skipSyntaxCheck: z
+    .boolean()
+    .default(true)
+    .describe(
+      'Defaults to TRUE because the per-include syntax check endpoint behaves inconsistently for ' +
+        'class sub-resources. Activation is the definitive validation for class bundles.',
+    ),
+});
+
+export interface WriteClassBundleOutput {
+  written: number;
+  lockReleased: boolean;
+  hint: string;
+}
+
+export const writeClassBundleTool: CapituTool<
+  typeof writeClassBundleSchema,
+  WriteClassBundleOutput
+> = {
+  name: 'capituDevWriteClassBundle',
+  description:
+    'Write multiple sources to a single class (main + class-local includes CCDEF/CCIMP/CCAU) ' +
+    'under ONE lock in ONE stateful HTTP session. Use this for RAP behavior pool classes where ' +
+    'main (global class with FOR BEHAVIOR OF) and implementations (lhc_* handler) must land ' +
+    'together — writing them via two separate capituDevWriteObject calls produces HTTP 404 on the ' +
+    'second write because the include resource only exists inside the session that wrote main. ' +
+    'After this call, run capituDevActivate against the class objectUri.',
+  category: 'code-write',
+  inputSchema: writeClassBundleSchema,
+  handler: async (input, ctx): Promise<WriteClassBundleOutput> => {
+    assertWritesEnabled(ctx, input.packageName);
+    const transport = await effectiveTransport(ctx.adt, input.packageName, input.transport);
+    const result = await ctx.adt.writeClassBundle({
+      classObjectUri: input.classObjectUri,
+      transport,
+      sources: input.sources,
+    });
+    return {
+      written: result.written,
+      lockReleased: result.lockReleased,
+      hint: `Wrote ${result.written} source(s) under one lock. Next: call capituDevActivate against ${input.classObjectUri} (the class objectUri). For RAP behavior pools, activation may take 1-2s while SAP reconciles the CCIMP local class with the global FOR BEHAVIOR OF reference.`,
+    };
+  },
+};
+
 // ---- Activate ---------------------------------------------------------------
 
 const activateSchema = z.object({
   objectName: z.string().min(1).describe('Object name as in TADIR (e.g. ZI_MY_VIEW).'),
   objectUri: z.string().min(1).describe('ADT object URI (NOT the source URI).'),
-  mainInclude: z
-    .string()
-    .optional()
-    .describe('For FUGR/PROG groups: the main include URI.'),
+  mainInclude: z.string().optional().describe('For FUGR/PROG groups: the main include URI.'),
   packageName: z
     .string()
     .min(1)

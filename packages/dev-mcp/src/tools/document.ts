@@ -177,7 +177,9 @@ function buildDocumentationMarkdown(args: {
   if (args.consumers.length === 0) {
     lines.push('## Consumidores');
     lines.push('');
-    lines.push('_Nenhum consumidor encontrado via where-used. Este objeto está isolado — não é referenciado por outros._');
+    lines.push(
+      '_Nenhum consumidor encontrado via where-used. Este objeto está isolado — não é referenciado por outros._',
+    );
   } else {
     lines.push(`## Consumidores (${args.consumers.length})`);
     lines.push('');

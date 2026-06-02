@@ -1,13 +1,10 @@
 #!/usr/bin/env node
+import { CompliancePolicyViolation } from '@capitu/kb';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-import { CompliancePolicyViolation } from '@capitu/kb';
-import { zodToJsonSchema } from './schema.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { type ServerContext, buildContext, shutdownContext } from './context.js';
+import { zodToJsonSchema } from './schema.js';
 import { runTool } from './tool.js';
 import { ALL_TOOLS } from './tools/index.js';
 
@@ -78,7 +75,9 @@ export async function main(): Promise<void> {
   const writesNote = ctx.writes.allowed
     ? `writes ENABLED (allowlist: ${ctx.writes.allowedPackages.join(', ')})`
     : 'writes DISABLED (set CAPITU_ALLOW_WRITES=true to enable)';
-  process.stderr.write(`[capitu-dev] v${VERSION} ready (${ALL_TOOLS.length} tools, ${writesNote})\n`);
+  process.stderr.write(
+    `[capitu-dev] v${VERSION} ready (${ALL_TOOLS.length} tools, ${writesNote})\n`,
+  );
 }
 
 const invokedDirectly =

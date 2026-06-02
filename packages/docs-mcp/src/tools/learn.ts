@@ -16,9 +16,7 @@ const learnSchema = z.object({
   context: z
     .record(z.unknown())
     .optional()
-    .describe(
-      'Optional structured context (e.g. { objectUri, release, package, errorCode })',
-    ),
+    .describe('Optional structured context (e.g. { objectUri, release, package, errorCode })'),
 });
 
 export type LearnOutput = { id: number; status: 'recorded'; embedDim: number };

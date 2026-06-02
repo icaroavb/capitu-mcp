@@ -34,7 +34,7 @@ const SUBDIRS: Record<OutputCategory, string> = {
 
 export function resolveOutputDir(env: NodeJS.ProcessEnv = process.env): string {
   const fromEnv = env.CAPITU_OUTPUT_DIR;
-  if (fromEnv && fromEnv.trim()) {
+  if (fromEnv?.trim()) {
     return resolve(fromEnv.trim());
   }
   return resolve(process.cwd(), 'capitu-output');
@@ -49,12 +49,17 @@ export function categoryDir(category: OutputCategory, base?: string): string {
  * Adds a UTC timestamp prefix (YYYY-MM-DD_HHMM) so artifacts sort chronologically.
  */
 export function buildFilename(title: string, ext: string): string {
-  const slug = title
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-zA-Z0-9._-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 80) || 'untitled';
+  const slug =
+    title
+      .normalize('NFKD')
+      // Strip combining diacritical marks (U+0300–U+036F) left by NFKD so
+      // "ação" → "acao". Escapes (not literal combining chars) keep it readable
+      // in editors and diffs.
+      // biome-ignore lint/suspicious/noMisleadingCharacterClass: intentional diacritic strip; alternation of 112 codepoints would be absurd.
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'untitled';
   const now = new Date();
   const pad = (n: number): string => String(n).padStart(2, '0');
   const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
@@ -79,10 +84,7 @@ export function buildFilename(title: string, ext: string): string {
  * Anything we don't recognize falls through as plain paragraph — preserves
  * the original text rather than dropping it.
  */
-export async function markdownToDocxBuffer(
-  markdown: string,
-  title: string,
-): Promise<Buffer> {
+export async function markdownToDocxBuffer(markdown: string, title: string): Promise<Buffer> {
   const children: (Paragraph | Table)[] = [];
 
   // Title at top
@@ -218,9 +220,7 @@ export async function markdownToDocxBuffer(
     }
 
     // Plain paragraph
-    children.push(
-      new Paragraph({ children: inlineRuns(line), spacing: { after: 80 } }),
-    );
+    children.push(new Paragraph({ children: inlineRuns(line), spacing: { after: 80 } }));
     i++;
   }
 
@@ -310,9 +310,7 @@ function inlineRuns(text: string): TextRun[] {
     }
     const token = match[0];
     if (token.startsWith('`')) {
-      runs.push(
-        new TextRun({ text: token.slice(1, -1), font: 'Consolas', size: 20 }),
-      );
+      runs.push(new TextRun({ text: token.slice(1, -1), font: 'Consolas', size: 20 }));
     } else if (token.startsWith('**')) {
       runs.push(new TextRun({ text: token.slice(2, -2), bold: true }));
     } else {
@@ -371,7 +369,10 @@ export function writeMarkdownAsMd(args: {
 
 export interface OutputListing {
   baseDir: string;
-  byCategory: Record<OutputCategory, Array<{ filename: string; bytes: number; modifiedAt: string }>>;
+  byCategory: Record<
+    OutputCategory,
+    Array<{ filename: string; bytes: number; modifiedAt: string }>
+  >;
 }
 
 export function listOutputs(baseDir?: string): OutputListing {

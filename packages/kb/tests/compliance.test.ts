@@ -58,9 +58,7 @@ describe('compliance', () => {
 
   it('assertCompliance throws CompliancePolicyViolation on deny', () => {
     const strict = { mode: 'strict' as const, riskAcknowledged: false };
-    expect(() => assertCompliance('sql-execute', strict)).toThrow(
-      CompliancePolicyViolation,
-    );
+    expect(() => assertCompliance('sql-execute', strict)).toThrow(CompliancePolicyViolation);
   });
 
   it('assertCompliance does not throw on endorsed category', () => {

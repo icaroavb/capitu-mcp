@@ -13,21 +13,13 @@ function vecToBlob(vec: number[]): Buffer {
   return buf;
 }
 
-export function insertDoc(
-  db: Database,
-  chunk: DocChunk,
-  embedding: number[],
-): number {
+export function insertDoc(db: Database, chunk: DocChunk, embedding: number[]): number {
   const insertDoc = db.prepare(`
     INSERT INTO docs (source, release, url, title, content, chunk_meta)
     VALUES (@source, @release, @url, @title, @content, @chunkMeta)
   `);
-  const insertFts = db.prepare(
-    'INSERT INTO docs_fts (rowid, content) VALUES (?, ?)',
-  );
-  const insertVec = db.prepare(
-    'INSERT INTO docs_vec (rowid, embedding) VALUES (?, ?)',
-  );
+  const insertFts = db.prepare('INSERT INTO docs_fts (rowid, content) VALUES (?, ?)');
+  const insertVec = db.prepare('INSERT INTO docs_vec (rowid, embedding) VALUES (?, ?)');
 
   // When embedding is empty (NullEmbeddings — BM25-only mode), skip the
   // vector insert. FTS5 still gets the row so keyword search works.
@@ -54,9 +46,9 @@ export function insertDoc(
 }
 
 export function getDoc(db: Database, id: number): StoredDoc | undefined {
-  const row = db
-    .prepare('SELECT * FROM docs WHERE id = ?')
-    .get(id) as Record<string, unknown> | undefined;
+  const row = db.prepare('SELECT * FROM docs WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined;
   if (!row) return undefined;
   return rowToDoc(row);
 }
@@ -86,9 +78,7 @@ export function countDocs(db: Database, source?: string): number {
 
 export function deleteBySource(db: Database, source: string): number {
   const tx = db.transaction(() => {
-    const ids = db
-      .prepare('SELECT id FROM docs WHERE source = ?')
-      .all(source) as { id: number }[];
+    const ids = db.prepare('SELECT id FROM docs WHERE source = ?').all(source) as { id: number }[];
     for (const { id } of ids) {
       db.prepare('DELETE FROM docs_fts WHERE rowid = ?').run(id);
       db.prepare('DELETE FROM docs_vec WHERE rowid = ?').run(id);

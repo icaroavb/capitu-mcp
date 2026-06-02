@@ -1,10 +1,6 @@
 import { applyTool } from './apply.js';
 import { draftTool } from './draft.js';
-import {
-  exportDocxTool,
-  exportProposalTool,
-  listOutputsTool,
-} from './export.js';
+import { exportDocxTool, exportProposalTool, listOutputsTool } from './export.js';
 import { impactTool } from './impact.js';
 import { learnTool, recallTool } from './learn.js';
 import { listProposalsTool } from './proposals-list.js';

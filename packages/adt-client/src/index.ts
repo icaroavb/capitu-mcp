@@ -1,5 +1,39 @@
-export { CapituAdtClient } from './client.js';
+export {
+  CapituAdtClient,
+  CapituAdtError,
+  decodeXmlEntities,
+  isLocalPackage,
+} from './client.js';
 export { probeEnvironment, classifyEdition } from './probe.js';
+export {
+  BDEF_COLLECTION,
+  BDEF_CONTENT_TYPE,
+  SRVB_COLLECTION,
+  SRVB_CONTENT_TYPE,
+  bdefObjectUri,
+  bdefSourceUri,
+  buildBdefCreateXml,
+  buildSrvbCreateXml,
+  normalizeSrvbBindingType,
+  srvbObjectUri,
+  type BdefCreateParams,
+  type SrvbCreateParams,
+} from './raw-create.js';
+export {
+  withRetry,
+  detectRetryReason,
+  summarizeAdtError,
+  errorMessage,
+  inspectAdtError,
+  describeAdtError,
+  isAlreadyExistsError,
+  isLockedByOtherUserError,
+  isPossiblyDirtySession,
+  type AdtErrorDetail,
+  type RetryReason,
+  type RetryContext,
+  type WithRetryOptions,
+} from './resilience.js';
 export type {
   ActivationResultDigest,
   AdtConnectionOptions,
@@ -12,6 +46,7 @@ export type {
   SapEdition,
   SearchHit,
   SyntaxFinding,
+  TransportCheckResult,
   TransportContents,
   TransportSummary,
   TransportTaskDetail,

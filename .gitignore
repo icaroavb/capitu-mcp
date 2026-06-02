@@ -35,3 +35,10 @@ capitu-output/**
 # Smoke / integration scripts — local only (hit live SAP).
 scripts/smoke-test-adt*.ts
 scripts/integration-test-adt.ts
+
+# Case n8n/Telegram — material pessoal fora do escopo do produto.
+# A coleção Postman e o guia gerado contêm host/usuário do tenant.
+# Mantidos localmente, nunca versionados.
+postman/
+gen-guia-case-n8n.js
+Guia-Case-n8n-SAP.docx

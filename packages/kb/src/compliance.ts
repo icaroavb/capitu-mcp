@@ -81,10 +81,7 @@ export interface ComplianceDecision {
   reason?: string;
 }
 
-export function evaluate(
-  category: ToolCategory,
-  ctx: ComplianceContext,
-): ComplianceDecision {
+export function evaluate(category: ToolCategory, ctx: ComplianceContext): ComplianceDecision {
   if (ENDORSED_CATEGORIES.has(category)) {
     return { allowed: true };
   }
@@ -97,28 +94,18 @@ export function evaluate(
   if (ctx.mode === 'strict') {
     return {
       allowed: false,
-      reason:
-        `Tool category '${category}' is out of scope of the SAP API Policy ` +
-        `(April 2026, Q33) for ADT-based access. ADT is endorsed only for ` +
-        `development tooling (code, checks, tests, transports, abapGit, debug). ` +
-        `Set CAPITU_COMPLIANCE_MODE=permissive AND ` +
-        `CAPITU_I_UNDERSTAND_API_POLICY_RISK=yes to override (your responsibility).`,
+      reason: `Tool category '${category}' is out of scope of the SAP API Policy (April 2026, Q33) for ADT-based access. ADT is endorsed only for development tooling (code, checks, tests, transports, abapGit, debug). Set CAPITU_COMPLIANCE_MODE=permissive AND CAPITU_I_UNDERSTAND_API_POLICY_RISK=yes to override (your responsibility).`,
     };
   }
   if (!ctx.riskAcknowledged) {
     return {
       allowed: false,
-      reason:
-        `Permissive mode requires CAPITU_I_UNDERSTAND_API_POLICY_RISK=yes ` +
-        `to confirm you understand category '${category}' is outside the ` +
-        `endorsed ADT scope under SAP API Policy Q33.`,
+      reason: `Permissive mode requires CAPITU_I_UNDERSTAND_API_POLICY_RISK=yes to confirm you understand category '${category}' is outside the endorsed ADT scope under SAP API Policy Q33.`,
     };
   }
   return {
     allowed: true,
-    warning:
-      `Category '${category}' is outside the endorsed ADT scope. ` +
-      `Running because permissive mode is enabled. Audit trail recorded.`,
+    warning: `Category '${category}' is outside the endorsed ADT scope. Running because permissive mode is enabled. Audit trail recorded.`,
   };
 }
 

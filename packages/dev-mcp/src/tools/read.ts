@@ -38,6 +38,68 @@ export const readObjectTool: CapituTool<typeof readObjectSchema, ReadObjectOutpu
   },
 };
 
+// ---- InspectPackage (structural attributes) --------------------------------
+
+const inspectPackageSchema = z.object({
+  packageName: z.string().min(1).describe('Package name (e.g. ZCASEN8N, $TMP).'),
+});
+
+export interface InspectPackageOutput {
+  name: string;
+  description: string;
+  /** false ⇒ ANY create against this package returns TO-142 (server config gate). */
+  isAddingObjectsAllowed: boolean;
+  /** false ⇒ the flag is locked by software-component policy; cannot be changed in SE21/ADT. */
+  isAddingObjectsAllowedEditable: boolean;
+  packageType: string;
+  transportLayer: string;
+  softwareComponent: string;
+  superPackage: string;
+  responsible: string;
+  /** True when something about the package would block a create attempt right now. */
+  blocksCreation: boolean;
+  /** Plain-Portuguese summary suitable for chat output. */
+  diagnosis: string;
+}
+
+export const inspectPackageTool: CapituTool<typeof inspectPackageSchema, InspectPackageOutput> = {
+  name: 'capituDevInspectPackage',
+  description:
+    'Read structural attributes of a package: isAddingObjectsAllowed (the TO-142 trigger), ' +
+    'transportLayer, softwareComponent, packageType, responsible. Use BEFORE creating objects in ' +
+    'a newly-minted package — TO-142 errors during create are almost always isAddingObjectsAllowed=false, ' +
+    'which this tool surfaces explicitly. READ-ONLY; no side effects.',
+  category: 'code-read',
+  inputSchema: inspectPackageSchema,
+  handler: async (input, ctx): Promise<InspectPackageOutput> => {
+    const p = await ctx.adt.inspectPackage(input.packageName);
+    const blocks = !p.isAddingObjectsAllowed;
+    let diagnosis: string;
+    if (blocks && p.isAddingObjectsAllowedEditable) {
+      diagnosis = `Pacote '${p.name}' está com isAddingObjectsAllowed=false. QUALQUER create vai retornar TO-142 — não é problema de TR. Como isAddingObjectsAllowedEditable=true, você pode destravar: abrir o pacote no Eclipse em modo edição, toggle no checkbox "Adding further objects not possible" (marcar+desmarcar para forçar dirty), Ctrl+S na TR aberta.`;
+    } else if (blocks && !p.isAddingObjectsAllowedEditable) {
+      diagnosis = `Pacote '${p.name}' está com isAddingObjectsAllowed=false E não-editável (travado pela política do Software Component '${p.softwareComponent}'). Não dá pra destravar no SE21/ADT. Use outro pacote OU escolha um SC modificável.`;
+    } else {
+      diagnosis =
+        `OK. Pacote '${p.name}' aceita criação. ` +
+        `Software Component=${p.softwareComponent}, Transport Layer=${p.transportLayer}.`;
+    }
+    return {
+      name: p.name,
+      description: p.description,
+      isAddingObjectsAllowed: p.isAddingObjectsAllowed,
+      isAddingObjectsAllowedEditable: p.isAddingObjectsAllowedEditable,
+      packageType: p.packageType,
+      transportLayer: p.transportLayer,
+      softwareComponent: p.softwareComponent,
+      superPackage: p.superPackage,
+      responsible: p.responsible,
+      blocksCreation: blocks,
+      diagnosis,
+    };
+  },
+};
+
 // ---- ReadPackage ------------------------------------------------------------
 
 const readPackageSchema = z.object({

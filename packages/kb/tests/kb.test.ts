@@ -58,9 +58,7 @@ async function embed(text: string): Promise<number[]> {
 describe('kb', () => {
   it('opens db and creates schema', () => {
     const db = open();
-    const row = db
-      .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
-      .get();
+    const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get();
     expect(row).toBeDefined();
     db.close();
   });
@@ -124,12 +122,8 @@ describe('kb', () => {
 
   it('tenant catalog upsert is idempotent', () => {
     const db = open();
-    upsertCatalog(db, [
-      { type: 'released_api', name: 'I_BusinessPartner', releaseContract: 'C1' },
-    ]);
-    upsertCatalog(db, [
-      { type: 'released_api', name: 'I_BusinessPartner', releaseContract: 'C2' },
-    ]);
+    upsertCatalog(db, [{ type: 'released_api', name: 'I_BusinessPartner', releaseContract: 'C1' }]);
+    upsertCatalog(db, [{ type: 'released_api', name: 'I_BusinessPartner', releaseContract: 'C2' }]);
     const all = listCatalog(db, 'released_api');
     expect(all).toHaveLength(1);
     expect(all[0]?.releaseContract).toBe('C2');
@@ -146,9 +140,7 @@ describe('kb', () => {
       durationMs: 42,
       status: 'ok',
     });
-    const row = db
-      .prepare('SELECT COUNT(*) AS c FROM traces')
-      .get() as { c: number };
+    const row = db.prepare('SELECT COUNT(*) AS c FROM traces').get() as { c: number };
     expect(row.c).toBe(1);
     db.close();
   });
@@ -166,14 +158,10 @@ describe('kb', () => {
     );
     expect(id).toBeGreaterThan(0);
     // docs row exists
-    const docCount = (
-      db.prepare('SELECT COUNT(*) AS c FROM docs').get() as { c: number }
-    ).c;
+    const docCount = (db.prepare('SELECT COUNT(*) AS c FROM docs').get() as { c: number }).c;
     expect(docCount).toBe(1);
     // docs_vec has nothing
-    const vecCount = (
-      db.prepare('SELECT COUNT(*) AS c FROM docs_vec').get() as { c: number }
-    ).c;
+    const vecCount = (db.prepare('SELECT COUNT(*) AS c FROM docs_vec').get() as { c: number }).c;
     expect(vecCount).toBe(0);
     // FTS still has it — keyword search must work
     const hits = searchDocs(db, 'SELECT', [], { limit: 5 });

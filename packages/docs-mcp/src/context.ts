@@ -42,8 +42,7 @@ function required(name: string): string {
   const v = process.env[name];
   if (!v) {
     throw new Error(
-      `capitu-docs: required env var ${name} is missing. ` +
-        `ADT connection is mandatory in MVP. See README.md.`,
+      `capitu-docs: required env var ${name} is missing. ADT connection is mandatory in MVP. See README.md.`,
     );
   }
   return v;

@@ -1,15 +1,15 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Database } from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  type ComplianceContext,
   CompliancePolicyViolation,
   FakeEmbeddings,
-  type ComplianceContext,
   insertDoc,
   openKb,
 } from '@capitu/kb';
+import type { Database } from 'better-sqlite3';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ServerContext } from '../src/context.js';
 import { runTool } from '../src/tool.js';
 import { learnTool, recallLearningsTool, searchTool } from '../src/tools/index.js';
@@ -149,9 +149,7 @@ describe('compliance gate', () => {
   it('endorsed category passes in strict mode', async () => {
     const ctx = buildTestContext();
     await seedDocs(ctx);
-    await expect(
-      runTool(searchTool, { query: 'SELECT', limit: 1 }, ctx),
-    ).resolves.toBeTruthy();
+    await expect(runTool(searchTool, { query: 'SELECT', limit: 1 }, ctx)).resolves.toBeTruthy();
   });
 
   it('throws CompliancePolicyViolation when category is gray-zone in strict', async () => {
@@ -162,8 +160,6 @@ describe('compliance gate', () => {
       name: 'fake-gray',
       category: 'business-data-read' as const,
     };
-    await expect(runTool(grayTool, { query: 'x' }, ctx)).rejects.toThrow(
-      CompliancePolicyViolation,
-    );
+    await expect(runTool(grayTool, { query: 'x' }, ctx)).rejects.toThrow(CompliancePolicyViolation);
   });
 });

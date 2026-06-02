@@ -1,4 +1,4 @@
-import { assertCompliance, type ToolCategory, withTrace } from '@capitu/kb';
+import { type ToolCategory, assertCompliance, withTrace } from '@capitu/kb';
 import type { z } from 'zod';
 import type { ServerContext } from './context.js';
 

@@ -1,15 +1,13 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import type { Database } from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeEmbeddings, type ComplianceContext, openKb } from '@capitu/kb';
-import type { CapituAdtClient } from '@capitu/adt-client';
-import { type ServerContext } from '../src/context.js';
-import { runTool } from '../src/tool.js';
-import { specToMarkdown } from '../src/spec-model.js';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { CapituAdtClient } from '@capitu/adt-client';
+import { type ComplianceContext, FakeEmbeddings, openKb } from '@capitu/kb';
+import type { Database } from 'better-sqlite3';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ServerContext } from '../src/context.js';
+import { specToMarkdown } from '../src/spec-model.js';
+import { runTool } from '../src/tool.js';
 import {
   applyTool,
   draftTool,
@@ -54,10 +52,14 @@ function buildTestContext(opts?: {
   const db = openKb({ path: join(dbDir, 'kb.db') });
   openDbs.push(db);
   const compliance: ComplianceContext = { mode: 'strict', riskAcknowledged: false };
+  const defaultAdtStubs: Partial<CapituAdtClient> = {
+    pickDefaultTransport: vi.fn().mockResolvedValue(undefined),
+    resetTransportCache: vi.fn(),
+  };
   return {
     kb: db,
     embeddings: fake,
-    adt: (opts?.adtMock ?? {}) as CapituAdtClient,
+    adt: { ...defaultAdtStubs, ...opts?.adtMock } as CapituAdtClient,
     compliance,
     agent: 'capitu-spec',
   };
@@ -146,9 +148,7 @@ describe('draftTool', () => {
         approach: 'a',
         targetPackage: '$TMP',
         namespace: 'Z',
-        artifacts: [
-          { kind: 'cds-interface', name: 'ZI_X', description: 'x' },
-        ],
+        artifacts: [{ kind: 'cds-interface', name: 'ZI_X', description: 'x' }],
       },
       ctx,
     );
@@ -230,7 +230,9 @@ describe('validateTool', () => {
       ctx,
     );
     expect(out.ok).toBe(false);
-    expect(out.findings.some((f) => f.severity === 'error' && f.message.includes('collision'))).toBe(true);
+    expect(
+      out.findings.some((f) => f.severity === 'error' && f.message.includes('collision')),
+    ).toBe(true);
   });
 
   it('reports package not found as error', async () => {
@@ -279,11 +281,7 @@ describe('impactTool', () => {
         findReferences: vi.fn().mockResolvedValue([]),
       },
     });
-    const out = await runTool(
-      impactTool,
-      { uri: '/sap/bc/adt/oo/classes/zcl_lonely' },
-      ctx,
-    );
+    const out = await runTool(impactTool, { uri: '/sap/bc/adt/oo/classes/zcl_lonely' }, ctx);
     expect(out.riskTier).toBe('isolated');
     expect(out.totalConsumers).toBe(0);
     expect(out.summary).toContain('Safe to rename');
@@ -299,11 +297,7 @@ describe('impactTool', () => {
     const ctx = buildTestContext({
       adtMock: { findReferences: vi.fn().mockResolvedValue(refs) },
     });
-    const out = await runTool(
-      impactTool,
-      { uri: '/x' },
-      ctx,
-    );
+    const out = await runTool(impactTool, { uri: '/x' }, ctx);
     expect(out.riskTier).toBe('high');
     expect(out.totalConsumers).toBe(15);
     expect(out.byType.CLAS).toBe(15);
@@ -425,11 +419,7 @@ describe('proposal flow (propose + apply)', () => {
       },
       ctx,
     );
-    const apply = await runTool(
-      applyTool,
-      { token: propose.token, confirmed: false },
-      ctx,
-    );
+    const apply = await runTool(applyTool, { token: propose.token, confirmed: false }, ctx);
     expect(apply.status).toBe('cancelled');
     expect(apply.applied).toBe(0);
     expect((ctx.adt.createObject as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
@@ -470,17 +460,9 @@ describe('proposal flow (propose + apply)', () => {
       },
       ctx,
     );
-    const first = await runTool(
-      applyTool,
-      { token: propose.token, confirmed: true },
-      ctx,
-    );
+    const first = await runTool(applyTool, { token: propose.token, confirmed: true }, ctx);
     expect(first.status).toBe('applied');
-    const second = await runTool(
-      applyTool,
-      { token: propose.token, confirmed: true },
-      ctx,
-    );
+    const second = await runTool(applyTool, { token: propose.token, confirmed: true }, ctx);
     expect(second.status).toBe('rejected');
   });
 
@@ -534,11 +516,7 @@ describe('proposal flow (propose + apply)', () => {
       },
       ctx,
     );
-    const apply = await runTool(
-      applyTool,
-      { token: propose.token, confirmed: true },
-      ctx,
-    );
+    const apply = await runTool(applyTool, { token: propose.token, confirmed: true }, ctx);
     expect(apply.status).toBe('applied');
     expect(apply.applied).toBe(2);
     // Order: ZI_TWO before ZP_TWO
@@ -546,6 +524,76 @@ describe('proposal flow (propose + apply)', () => {
     const zpCreateIdx = calls.indexOf('create:ZP_TWO');
     expect(ziCreateIdx).toBeGreaterThanOrEqual(0);
     expect(zpCreateIdx).toBeGreaterThan(ziCreateIdx);
+  });
+
+  it('apply is idempotent on ExceptionResourceAlreadyExists — proceeds to write/activate', async () => {
+    // Simulate SAP returning "already exists" for the create step. The apply
+    // loop must keep going (write + activate) instead of bailing out — that
+    // is exactly the case when a previous partial run created the header
+    // but never wrote the body.
+    const calls: string[] = [];
+    const alreadyExists = new Error('Request failed with status code 400') as Error &
+      Record<string, unknown>;
+    alreadyExists.type = 'ExceptionResourceAlreadyExists';
+    alreadyExists.localizedMessage = 'Resource DDLS ZI_IDEMP does already exist';
+
+    const ctx = buildTestContext({
+      adtMock: {
+        createObject: vi.fn(async () => {
+          calls.push('create');
+          throw alreadyExists;
+        }),
+        lock: vi.fn(async (uri) => {
+          calls.push(`lock:${uri}`);
+          return { uri, lockHandle: 'H' };
+        }),
+        writeSource: vi.fn(async () => {
+          calls.push('write');
+        }),
+        unlock: vi.fn(async () => {
+          calls.push('unlock');
+        }),
+        activate: vi.fn(async () => {
+          calls.push('activate');
+          return { success: true, inactiveObjects: 0, messages: [] };
+        }),
+      },
+    });
+    const propose = await runTool(
+      proposeTool,
+      {
+        title: 'Idempotent',
+        requirement: 'r',
+        approach: 'a',
+        targetPackage: '$TMP',
+        namespace: 'Z',
+        artifacts: [
+          {
+            kind: 'cds-interface',
+            name: 'ZI_IDEMP',
+            description: 'x',
+            basedOn: '/dmo/carrier',
+            exposes: ['CarrierId'],
+          },
+        ],
+      },
+      ctx,
+    );
+    const apply = await runTool(applyTool, { token: propose.token, confirmed: true }, ctx);
+    expect(apply.status).toBe('applied');
+    expect(apply.applied).toBe(1);
+    expect(calls).toEqual([
+      'create',
+      'lock:/sap/bc/adt/ddic/ddl/sources/zi_idemp',
+      'write',
+      'unlock',
+      'activate',
+    ]);
+    // The create step must be marked OK with the "already exists" hint
+    const log = apply.log.find((l) => l.artifact === 'ZI_IDEMP');
+    const createStep = log?.steps?.find((s) => s.step === 'create');
+    expect(createStep?.status).toBe('ok');
+    expect(createStep?.detail).toContain('already exists');
   });
 });
 
@@ -572,7 +620,7 @@ describe('export tools', () => {
       expect(out.bytes).toBeGreaterThan(0);
     } finally {
       if (previous !== undefined) process.env.CAPITU_OUTPUT_DIR = previous;
-      else delete process.env.CAPITU_OUTPUT_DIR;
+      else process.env.CAPITU_OUTPUT_DIR = undefined;
       try {
         rmSync(tmpDir, { recursive: true, force: true });
       } catch {
@@ -592,7 +640,7 @@ describe('export tools', () => {
       expect(out.files).toEqual([]);
     } finally {
       if (previous !== undefined) process.env.CAPITU_OUTPUT_DIR = previous;
-      else delete process.env.CAPITU_OUTPUT_DIR;
+      else process.env.CAPITU_OUTPUT_DIR = undefined;
       try {
         rmSync(tmpDir, { recursive: true, force: true });
       } catch {
@@ -616,7 +664,7 @@ describe('export tools', () => {
       ).rejects.toThrow(/not found/);
     } finally {
       if (previous !== undefined) process.env.CAPITU_OUTPUT_DIR = previous;
-      else delete process.env.CAPITU_OUTPUT_DIR;
+      else process.env.CAPITU_OUTPUT_DIR = undefined;
       try {
         rmSync(tmpDir, { recursive: true, force: true });
       } catch {
@@ -639,9 +687,9 @@ describe('cross-agent learnings (spec)', () => {
       ctx,
     );
     expect(out.id).toBeGreaterThan(0);
-    const row = ctx.kb
-      .prepare('SELECT source_agent FROM learnings WHERE id = ?')
-      .get(out.id) as { source_agent: string };
+    const row = ctx.kb.prepare('SELECT source_agent FROM learnings WHERE id = ?').get(out.id) as {
+      source_agent: string;
+    };
     expect(row.source_agent).toBe('capitu-spec');
   });
 
@@ -656,11 +704,7 @@ describe('cross-agent learnings (spec)', () => {
       },
       ctx,
     );
-    const out = await runTool(
-      recallTool,
-      { query: 'naming convention projection' },
-      ctx,
-    );
+    const out = await runTool(recallTool, { query: 'naming convention projection' }, ctx);
     expect(out.matches.length).toBe(1);
     expect(out.matches[0]?.sourceAgent).toBe('capitu-spec');
   });

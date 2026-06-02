@@ -28,9 +28,7 @@ export function searchDocs(
   // in BM25-only mode (NullEmbeddings), queryEmbedding is [] and we skip vec.
   const bm25 = bm25Search(db, query, candidatePool, opts);
   const vec =
-    queryEmbedding.length > 0
-      ? vectorSearch(db, queryEmbedding, candidatePool, opts)
-      : [];
+    queryEmbedding.length > 0 ? vectorSearch(db, queryEmbedding, candidatePool, opts) : [];
 
   const scores = new Map<number, number>();
   for (const r of bm25) {
@@ -40,9 +38,7 @@ export function searchDocs(
     scores.set(r.id, (scores.get(r.id) ?? 0) + 1 / (k + r.rank));
   }
 
-  const topIds = [...scores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit);
+  const topIds = [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
 
   if (topIds.length === 0) return [];
 
@@ -78,12 +74,7 @@ export function searchDocs(
   });
 }
 
-function bm25Search(
-  db: Database,
-  query: string,
-  limit: number,
-  opts: SearchOptions,
-): RankedRow[] {
+function bm25Search(db: Database, query: string, limit: number, opts: SearchOptions): RankedRow[] {
   const filters: string[] = [];
   const params: unknown[] = [escapeFtsQuery(query)];
   if (opts.source) {

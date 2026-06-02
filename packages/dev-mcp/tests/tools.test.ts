@@ -1,30 +1,34 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Database } from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CapituAdtClient } from '@capitu/adt-client';
 import {
+  type ComplianceContext,
   CompliancePolicyViolation,
   FakeEmbeddings,
-  type ComplianceContext,
   openKb,
 } from '@capitu/kb';
-import type { CapituAdtClient } from '@capitu/adt-client';
+import type { Database } from 'better-sqlite3';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ServerContext, isPackageAllowed } from '../src/context.js';
 import { runTool } from '../src/tool.js';
 import {
   activateTool,
   applyArtifactTool,
   createObjectTool,
+  createServiceBindingTool,
+  createServiceDefinitionTool,
   findReferencesTool,
   learnTool,
   listTransportsTool,
+  publishServiceBindingTool,
   readObjectTool,
   readPackageTool,
   recallTool,
   searchTool,
   syntaxCheckTool,
   transportContentsTool,
+  unpublishServiceBindingTool,
   writeObjectTool,
 } from '../src/tools/index.js';
 
@@ -39,9 +43,17 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const db of openDbs) {
-    try { db.close(); } catch { /* ignore */ }
+    try {
+      db.close();
+    } catch {
+      /* ignore */
+    }
   }
-  try { rmSync(dbDir, { recursive: true, force: true }); } catch { /* windows lock */ }
+  try {
+    rmSync(dbDir, { recursive: true, force: true });
+  } catch {
+    /* windows lock */
+  }
 });
 
 function buildTestContext(opts?: {
@@ -55,10 +67,16 @@ function buildTestContext(opts?: {
   const compliance: ComplianceContext = opts?.permissive
     ? { mode: 'permissive', riskAcknowledged: true }
     : { mode: 'strict', riskAcknowledged: false };
+  // Defaults that mimic CapituAdtClient methods so write tools don't need
+  // every test to wire pickDefaultTransport / listTransports etc.
+  const defaultAdtStubs: Partial<CapituAdtClient> = {
+    pickDefaultTransport: vi.fn().mockResolvedValue(undefined),
+    resetTransportCache: vi.fn(),
+  };
   return {
     kb: db,
     embeddings: fake,
-    adt: (opts?.adtMock ?? {}) as CapituAdtClient,
+    adt: { ...defaultAdtStubs, ...opts?.adtMock } as CapituAdtClient,
     compliance,
     agent: 'capitu-dev',
     writes: {
@@ -139,9 +157,9 @@ describe('read tools', () => {
   it('findReferencesTool returns references', async () => {
     const ctx = buildTestContext({
       adtMock: {
-        findReferences: vi.fn().mockResolvedValue([
-          { uri: '/sap/x', type: 'CLAS/OC', name: 'ZCL_CALLER' },
-        ]),
+        findReferences: vi
+          .fn()
+          .mockResolvedValue([{ uri: '/sap/x', type: 'CLAS/OC', name: 'ZCL_CALLER' }]),
       },
     });
     const out = await runTool(findReferencesTool, { uri: '/sap/y' }, ctx);
@@ -154,9 +172,11 @@ describe('syntaxCheckTool', () => {
   it('returns ok=true when no errors', async () => {
     const ctx = buildTestContext({
       adtMock: {
-        syntaxCheck: vi.fn().mockResolvedValue([
-          { severity: 'warning', uri: '/x', line: 5, offset: 0, text: 'unused var' },
-        ]),
+        syntaxCheck: vi
+          .fn()
+          .mockResolvedValue([
+            { severity: 'warning', uri: '/x', line: 5, offset: 0, text: 'unused var' },
+          ]),
       },
     });
     const out = await runTool(syntaxCheckTool, { uri: '/sap/x/source/main' }, ctx);
@@ -168,9 +188,11 @@ describe('syntaxCheckTool', () => {
   it('returns ok=false on errors', async () => {
     const ctx = buildTestContext({
       adtMock: {
-        syntaxCheck: vi.fn().mockResolvedValue([
-          { severity: 'error', uri: '/x', line: 5, offset: 0, text: 'syntax error' },
-        ]),
+        syntaxCheck: vi
+          .fn()
+          .mockResolvedValue([
+            { severity: 'error', uri: '/x', line: 5, offset: 0, text: 'syntax error' },
+          ]),
       },
     });
     const out = await runTool(syntaxCheckTool, { uri: '/sap/x/source/main' }, ctx);
@@ -208,7 +230,7 @@ describe('createObjectTool', () => {
         },
         ctx,
       ),
-    ).rejects.toThrow(/not in the allowlist/);
+    ).rejects.toThrow(/blocked by capitu-dev SERVER configuration/);
   });
 
   it('builds correct URIs by type and returns hint for next steps', async () => {
@@ -229,8 +251,8 @@ describe('createObjectTool', () => {
       ctx,
     );
     expect(out.created).toBe(true);
-    expect(out.uri).toBe('/sap/bc/adt/ddic/ddl/sources/zi_test_capitu');
-    expect(out.sourceUri).toBe('/sap/bc/adt/ddic/ddl/sources/zi_test_capitu/source/main');
+    expect(out.uri).toBe('/sap/bc/adt/ddic/ddl/sources/zi_example_cds');
+    expect(out.sourceUri).toBe('/sap/bc/adt/ddic/ddl/sources/zi_example_cds/source/main');
     expect(out.hint).toMatch(/INACTIVE and empty/);
     expect(createSpy).toHaveBeenCalledWith({
       objectType: 'DDLS/DF',
@@ -291,7 +313,7 @@ describe('write safety gates', () => {
         },
         ctx,
       ),
-    ).rejects.toThrow(/not in the allowlist/);
+    ).rejects.toThrow(/blocked by capitu-dev SERVER configuration/);
   });
 
   it('writeObjectTool aborts on syntax errors before locking', async () => {
@@ -324,11 +346,7 @@ describe('write safety gates', () => {
   it('activateTool refuses when writes disabled', async () => {
     const ctx = buildTestContext({ writesAllowed: false });
     await expect(
-      runTool(
-        activateTool,
-        { objectName: 'ZI_X', objectUri: '/sap/x', packageName: '$TMP' },
-        ctx,
-      ),
+      runTool(activateTool, { objectName: 'ZI_X', objectUri: '/sap/x', packageName: '$TMP' }, ctx),
     ).rejects.toThrow(/Writes disabled/);
   });
 });
@@ -452,9 +470,9 @@ describe('applyArtifactTool (atomic macro)', () => {
       allowedPackages: ['$TMP'],
       adtMock: {
         createObject: vi.fn().mockResolvedValue(undefined),
-        syntaxCheck: vi.fn().mockResolvedValue([
-          { severity: 'error', uri: '/x', line: 1, offset: 0, text: 'bad' },
-        ]),
+        syntaxCheck: vi
+          .fn()
+          .mockResolvedValue([{ severity: 'error', uri: '/x', line: 1, offset: 0, text: 'bad' }]),
         lock: lockSpy,
       },
     });
@@ -590,14 +608,254 @@ describe('transport tools', () => {
         }),
       },
     });
-    const out = await runTool(
-      transportContentsTool,
-      { transportNumber: 'NDCK900001' },
-      ctx,
-    );
+    const out = await runTool(transportContentsTool, { transportNumber: 'NDCK900001' }, ctx);
     expect(out.taskCount).toBe(1);
     expect(out.totalObjects).toBe(1);
     expect(out.tasks[0]?.objects[0]?.name).toBe('ZI_FLIGHT_DEMO');
+  });
+});
+
+describe('RAP service stack tools', () => {
+  it('createServiceDefinitionTool generates a default skeleton from exposedCdsView', async () => {
+    const createObject = vi.fn().mockResolvedValue(undefined);
+    const lock = vi.fn().mockResolvedValue({ uri: 'x', lockHandle: 'H' });
+    const writeSource = vi.fn().mockResolvedValue(undefined);
+    const unlock = vi.fn().mockResolvedValue(undefined);
+    const activate = vi.fn().mockResolvedValue({ success: true, inactiveObjects: 0, messages: [] });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['$TMP', 'ZCASEN8N'],
+      adtMock: { createObject, lock, writeSource, unlock, activate },
+    });
+    const out = await runTool(
+      createServiceDefinitionTool,
+      {
+        name: 'ZUI_PURCHASE_REQ',
+        description: 'PurchaseReq UI service',
+        packageName: 'ZCASEN8N',
+        exposedCdsView: 'ZC_PURCHASE_REQ',
+      },
+      ctx,
+    );
+    expect(out.created).toBe(true);
+    expect(out.activated).toBe(true);
+    expect(out.alias).toBe('PurchaseReq'); // ZC_PURCHASE_REQ → strip ZC_, PascalCase
+    expect(out.generatedSkeleton).toBe(true);
+    expect(out.sourceUri).toBe('/sap/bc/adt/ddic/srvd/sources/zui_purchase_req/source/main');
+    // Skeleton contains the expected expose clause
+    expect(writeSource.mock.calls[0]?.[1]).toContain('expose ZC_PURCHASE_REQ as PurchaseReq');
+    expect(writeSource.mock.calls[0]?.[1]).toContain('define service ZUI_PURCHASE_REQ');
+  });
+
+  it('createServiceDefinitionTool honors an explicit alias', async () => {
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: {
+        createObject: vi.fn().mockResolvedValue(undefined),
+        lock: vi.fn().mockResolvedValue({ uri: 'x', lockHandle: 'H' }),
+        writeSource: vi.fn().mockResolvedValue(undefined),
+        unlock: vi.fn().mockResolvedValue(undefined),
+        activate: vi.fn().mockResolvedValue({ success: true, inactiveObjects: 0, messages: [] }),
+      },
+    });
+    const out = await runTool(
+      createServiceDefinitionTool,
+      {
+        name: 'ZUI_PURCHASE_REQ',
+        description: 'd',
+        packageName: 'ZCASEN8N',
+        exposedCdsView: 'ZC_PURCHASE_REQ',
+        alias: 'PR',
+      },
+      ctx,
+    );
+    expect(out.alias).toBe('PR');
+  });
+
+  it('createServiceBindingTool routes through createSrvbRaw and reports effective binding', async () => {
+    const createSrvbRaw = vi.fn().mockResolvedValue({
+      objectUri: '/sap/bc/adt/businessservices/bindings/zui_purchase_req_o4',
+    });
+    const activate = vi.fn().mockResolvedValue({ success: true, inactiveObjects: 0, messages: [] });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: { createSrvbRaw, activate },
+    });
+    const out = await runTool(
+      createServiceBindingTool,
+      {
+        name: 'ZUI_PURCHASE_REQ_O4',
+        description: 'OData V4 UI binding',
+        packageName: 'ZCASEN8N',
+        serviceDefinition: 'ZUI_PURCHASE_REQ',
+        bindingType: 'ODataV4-UI',
+      },
+      ctx,
+    );
+    expect(createSrvbRaw).toHaveBeenCalledTimes(1);
+    expect(createSrvbRaw.mock.calls[0]?.[0].serviceDefinition).toBe('ZUI_PURCHASE_REQ');
+    expect(out.created).toBe(true);
+    expect(out.activated).toBe(true);
+    expect(out.effectiveBinding.version).toBe('V4');
+    expect(out.effectiveBinding.category).toBe('0'); // UI
+    expect(out.serviceDefinition).toBe('ZUI_PURCHASE_REQ');
+  });
+
+  it('createServiceBindingTool defaults to V2/UI when bindingType omitted', async () => {
+    const createSrvbRaw = vi.fn().mockResolvedValue({
+      objectUri: '/sap/bc/adt/businessservices/bindings/z_x',
+    });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: {
+        createSrvbRaw,
+        activate: vi.fn().mockResolvedValue({ success: true, inactiveObjects: 0, messages: [] }),
+      },
+    });
+    const out = await runTool(
+      createServiceBindingTool,
+      {
+        name: 'Z_X',
+        description: 'd',
+        packageName: 'ZCASEN8N',
+        serviceDefinition: 'ZSD_X',
+      },
+      ctx,
+    );
+    // default is "ODataV4-UI" per schema default, so V4 + UI
+    expect(out.effectiveBinding.version).toBe('V4');
+    expect(out.effectiveBinding.category).toBe('0');
+  });
+
+  it('createServiceBindingTool honors explicit category / odataVersion overrides', async () => {
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: {
+        createSrvbRaw: vi
+          .fn()
+          .mockResolvedValue({ objectUri: '/sap/bc/adt/businessservices/bindings/z' }),
+        activate: vi.fn().mockResolvedValue({ success: true, inactiveObjects: 0, messages: [] }),
+      },
+    });
+    const out = await runTool(
+      createServiceBindingTool,
+      {
+        name: 'Z_X',
+        description: 'd',
+        packageName: 'ZCASEN8N',
+        serviceDefinition: 'ZSD_X',
+        bindingType: 'ODataV4-UI', // would normally yield V4/0
+        category: '1', // Web API override
+        odataVersion: 'V2', // V2 override
+      },
+      ctx,
+    );
+    expect(out.effectiveBinding.version).toBe('V2');
+    expect(out.effectiveBinding.category).toBe('1');
+  });
+
+  it('publishServiceBindingTool delegates to adt.publishServiceBinding with default version 0001', async () => {
+    const publishServiceBinding = vi.fn().mockResolvedValue({
+      severity: 'S',
+      shortText: 'Service published',
+      longText: '',
+    });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: { publishServiceBinding },
+    });
+    const out = await runTool(publishServiceBindingTool, { name: 'ZUI_PURCHASE_REQ_O4' }, ctx);
+    expect(out.ok).toBe(true);
+    expect(out.name).toBe('ZUI_PURCHASE_REQ_O4');
+    expect(out.version).toBe('0001');
+    expect(out.severity).toBe('S');
+    expect(publishServiceBinding).toHaveBeenCalledWith('ZUI_PURCHASE_REQ_O4', '0001');
+    expect(out.predictedEndpoint).toContain('zui_purchase_req_o4');
+    expect(out.predictedEndpoint).toContain('/0001/');
+  });
+
+  it('publishServiceBindingTool maps SEVERITY="OK" (real PCE response) to ok=true', async () => {
+    // Regression for the publishjobs bug captured live on PCE 2026-05-31:
+    // The endpoint returns the literal string SEVERITY="OK", NOT a T100
+    // letter. Earlier handler only accepted 'S'/'I' as success and reported
+    // a successful publish as ok=false. Captured curl output:
+    //   <DATA><SEVERITY>OK</SEVERITY><SHORT_TEXT>Local Service Endpoint of
+    //   service ZUI_PURCHASE_REQ_O4 with version 0001 is activated locally
+    //   </SHORT_TEXT><LONG_TEXT/></DATA>
+    const publishServiceBinding = vi.fn().mockResolvedValue({
+      severity: 'OK',
+      shortText:
+        'Local Service Endpoint of service ZUI_PURCHASE_REQ_O4 with version 0001 is activated locally',
+      longText: '',
+    });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: { publishServiceBinding },
+    });
+    const out = await runTool(publishServiceBindingTool, { name: 'ZUI_PURCHASE_REQ_O4' }, ctx);
+    expect(out.ok).toBe(true);
+    expect(out.severity).toBe('OK');
+    expect(out.shortText).toContain('activated locally');
+    expect(out.message).toMatch(/Published/i);
+  });
+
+  it('publishServiceBindingTool surfaces server error severity/shortText', async () => {
+    // After the SEVERITY="OK" fix, only literal "OK"/"S"/"I"/"W" map to
+    // ok=true. Anything else — "ERROR", "E", "FATAL", empty string — falls
+    // through to ok=false with the server's message preserved.
+    const publishServiceBinding = vi.fn().mockResolvedValue({
+      severity: 'ERROR',
+      shortText: 'Service binding not active',
+      longText: 'Activate the service binding before publishing.',
+    });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: { publishServiceBinding },
+    });
+    const out = await runTool(publishServiceBindingTool, { name: 'Z_X' }, ctx);
+    expect(out.ok).toBe(false);
+    expect(out.severity).toBe('ERROR');
+    expect(out.message).toContain('severity=ERROR');
+    expect(out.message).toContain('Service binding not active');
+  });
+
+  it('publishServiceBindingTool honors an explicit version', async () => {
+    const publishServiceBinding = vi.fn().mockResolvedValue({
+      severity: 'S',
+      shortText: '',
+      longText: '',
+    });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: { publishServiceBinding },
+    });
+    await runTool(publishServiceBindingTool, { name: 'Z_X', version: '0002' }, ctx);
+    expect(publishServiceBinding).toHaveBeenCalledWith('Z_X', '0002');
+  });
+
+  it('unpublishServiceBindingTool delegates to adt.unpublishServiceBinding', async () => {
+    const unpublishServiceBinding = vi.fn().mockResolvedValue({
+      severity: 'S',
+      shortText: 'Service unpublished',
+      longText: '',
+    });
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['ZCASEN8N'],
+      adtMock: { unpublishServiceBinding },
+    });
+    const out = await runTool(unpublishServiceBindingTool, { name: 'ZUI_PURCHASE_REQ_O4' }, ctx);
+    expect(out.ok).toBe(true);
+    expect(out.severity).toBe('S');
+    expect(unpublishServiceBinding).toHaveBeenCalledWith('ZUI_PURCHASE_REQ_O4', '0001');
   });
 });
 
@@ -615,9 +873,9 @@ describe('cross-agent learnings', () => {
     );
     expect(out.id).toBeGreaterThan(0);
 
-    const row = ctx.kb
-      .prepare('SELECT source_agent FROM learnings WHERE id = ?')
-      .get(out.id) as { source_agent: string };
+    const row = ctx.kb.prepare('SELECT source_agent FROM learnings WHERE id = ?').get(out.id) as {
+      source_agent: string;
+    };
     expect(row.source_agent).toBe('capitu-dev');
   });
 
@@ -636,9 +894,7 @@ describe('cross-agent learnings', () => {
     if (!emb) throw new Error('embed failed');
     const blob = Buffer.alloc(emb.length * 4);
     for (let i = 0; i < emb.length; i++) blob.writeFloatLE(emb[i] ?? 0, i * 4);
-    ctx.kb
-      .prepare('INSERT INTO learnings_vec (rowid, embedding) VALUES (?, ?)')
-      .run(docsId, blob);
+    ctx.kb.prepare('INSERT INTO learnings_vec (rowid, embedding) VALUES (?, ?)').run(docsId, blob);
 
     // Grava outro pelo dev
     await runTool(
@@ -678,8 +934,8 @@ describe('compliance still enforced', () => {
       name: 'fake-gray',
       category: 'business-data-read' as const,
     };
-    await expect(
-      runTool(grayTool, { sourceUri: '/x' }, ctx),
-    ).rejects.toThrow(CompliancePolicyViolation);
+    await expect(runTool(grayTool, { sourceUri: '/x' }, ctx)).rejects.toThrow(
+      CompliancePolicyViolation,
+    );
   });
 });

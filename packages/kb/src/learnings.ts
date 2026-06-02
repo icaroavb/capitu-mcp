@@ -2,11 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { vecToBlob } from './docs.js';
 import type { Learning, StoredLearning } from './types.js';
 
-export function insertLearning(
-  db: Database,
-  learning: Learning,
-  embedding: number[],
-): number {
+export function insertLearning(db: Database, learning: Learning, embedding: number[]): number {
   const skipVec = embedding.length === 0;
   const tx = db.transaction((l: Learning, e: number[]) => {
     const info = db
@@ -50,7 +46,8 @@ export function searchLearnings(
   queryEmbedding: number[],
   opts: { limit?: number; kind?: string; onlyValidated?: boolean; queryText?: string } = {},
 ): StoredLearning[] {
-  const limit = opts.limit ?? 5;
+  // opts.limit flows through to vectorLearningSearch / keywordLearningSearch
+  // — each applies its own default. No need to materialize here.
   const hasEmbedding = queryEmbedding.length > 0;
 
   if (hasEmbedding) {

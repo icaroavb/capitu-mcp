@@ -55,14 +55,8 @@ const draftSchema = z.object({
     .string()
     .min(1)
     .describe('Original requirement in natural language (verbatim, for traceability)'),
-  approach: z
-    .string()
-    .min(1)
-    .describe('2-4 sentence summary of the technical approach'),
-  targetPackage: z
-    .string()
-    .min(1)
-    .describe('Target ABAP package, e.g. ZMY_PROJECT, $TMP'),
+  approach: z.string().min(1).describe('2-4 sentence summary of the technical approach'),
+  targetPackage: z.string().min(1).describe('Target ABAP package, e.g. ZMY_PROJECT, $TMP'),
   namespace: z.string().default('Z').describe('Object name prefix the team uses'),
   artifacts: z
     .array(artifactSchema)
@@ -136,14 +130,10 @@ function normalizeArtifact(a: Artifact, namespace: string, warnings: string[]): 
     );
   }
   if (a.kind === 'cds-composite' && !upper.startsWith(`${namespace}C_`)) {
-    warnings.push(
-      `Composite CDS "${a.name}" conventionally uses "${namespace}C_" prefix.`,
-    );
+    warnings.push(`Composite CDS "${a.name}" conventionally uses "${namespace}C_" prefix.`);
   }
   if (a.kind === 'cds-projection' && !upper.startsWith(`${namespace}P_`)) {
-    warnings.push(
-      `Projection CDS "${a.name}" conventionally uses "${namespace}P_" prefix.`,
-    );
+    warnings.push(`Projection CDS "${a.name}" conventionally uses "${namespace}P_" prefix.`);
   }
   return { ...a, name: upper };
 }
@@ -159,7 +149,9 @@ function crossCheckArtifacts(arts: Artifact[], warnings: string[]): void {
   const hasSrvd = arts.some((a) => a.kind === 'service-definition');
   const hasSrvb = arts.some((a) => a.kind === 'service-binding');
   if (hasSrvb && !hasSrvd) {
-    warnings.push('Service binding requires a service definition. Add a "service-definition" artifact.');
+    warnings.push(
+      'Service binding requires a service definition. Add a "service-definition" artifact.',
+    );
   }
   const hasProjection = arts.some((a) => a.kind === 'cds-projection');
   if (hasSrvd && !hasProjection) {
@@ -274,22 +266,19 @@ function withDefaultConsiderations(
   if (arts.some((a) => a.kind === 'service-binding') && !seen.has('authorization')) {
     out.push({
       area: 'authorization',
-      text:
-        'OData service exposed to end users — DCL access control is mandatory before going live. Confirm authorization object reuse vs custom.',
+      text: 'OData service exposed to end users — DCL access control is mandatory before going live. Confirm authorization object reuse vs custom.',
     });
   }
   if (arts.some((a) => a.basedOn?.startsWith('/dmo/')) && !seen.has('data-quality')) {
     out.push({
       area: 'data-quality',
-      text:
-        'Spec references /dmo/* demo entities. These are SAP-provided sandbox tables, not production-ready. Replace with released APIs (C1/C2) before promoting beyond $TMP.',
+      text: 'Spec references /dmo/* demo entities. These are SAP-provided sandbox tables, not production-ready. Replace with released APIs (C1/C2) before promoting beyond $TMP.',
     });
   }
   if (!seen.has('transport')) {
     out.push({
       area: 'transport',
-      text:
-        'For target packages other than $TMP, attach all created objects to the same transport request. Use capituDevListTransports to pick one.',
+      text: 'For target packages other than $TMP, attach all created objects to the same transport request. Use capituDevListTransports to pick one.',
     });
   }
   return out;

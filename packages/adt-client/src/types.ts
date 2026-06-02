@@ -172,3 +172,32 @@ export interface TransportContents {
   /** Flat list of all objects across all tasks (for quick scan). */
   allObjects: TransportTaskDetail['objects'];
 }
+
+/**
+ * Result of POST /sap/bc/adt/cts/transportchecks — the read-only pre-flight
+ * the ADT calls before any create/update. Tells us, without mutating anything,
+ * whether a `(objectUrl, packageName, operation)` triple would be accepted.
+ *
+ * This is the canonical way to diagnose TO-142 ("cannot assign object X to
+ * package Y"), TO-131 ("namespace requires transport"), package "Adding
+ * Objects Allowed=false", transport-layer mismatches, and software-component
+ * non-modifiability — all without writing to SAP.
+ */
+export interface TransportCheckResult {
+  /** True when SAP requires a corrNr for this op (X = required, '' = not). */
+  recordingRequired: boolean;
+  /** True when the package is local ($* or DLVUNIT='LOCAL'). */
+  isLocal: boolean;
+  /** Delivery unit / software component (e.g. 'HOME', 'LOCAL', 'SAP_BASIS'). */
+  deliveryUnit: string;
+  /** The DEVCLASS the check resolved against (echo of input). */
+  devclass: string;
+  /** TRs the user could attach the object to (modifiable, owned by user). */
+  candidateTransports: Array<{ number: string; description: string; owner: string }>;
+  /** If the object is already locked elsewhere, the TR holding it. */
+  lockedInTransport?: string;
+  /** Errors raised by transportchecks itself (e.g. "package not found"). */
+  errors: string[];
+  /** Warnings (non-fatal, e.g. "package switched to local at last save"). */
+  warnings: string[];
+}

@@ -61,7 +61,12 @@ async function resolveFromCds(
     const exact = hits.find((h) => h.name.toUpperCase() === basedOn.toUpperCase());
     if (!exact) {
       warnings.push(`Could not locate ${basedOn} as CDS via search; field resolution skipped.`);
-      return { baseName: basedOn, baseColumns: [], matches: defaultPlaceholders(exposes), warnings };
+      return {
+        baseName: basedOn,
+        baseColumns: [],
+        matches: defaultPlaceholders(exposes),
+        warnings,
+      };
     }
     sourceUri = `${exact.uri}/source/main`;
   } catch (err) {
@@ -77,9 +82,7 @@ async function resolveFromCds(
     const obj = await adt.getSource(sourceUri);
     source = obj.source;
   } catch (err) {
-    warnings.push(
-      `getSource failed for ${basedOn}: ${err instanceof Error ? err.message : err}.`,
-    );
+    warnings.push(`getSource failed for ${basedOn}: ${err instanceof Error ? err.message : err}.`);
     return { baseName: basedOn, baseColumns: [], matches: defaultPlaceholders(exposes), warnings };
   }
 

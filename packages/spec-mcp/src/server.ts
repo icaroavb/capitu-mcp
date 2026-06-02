@@ -1,13 +1,10 @@
 #!/usr/bin/env node
+import { CompliancePolicyViolation } from '@capitu/kb';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
-import { CompliancePolicyViolation } from '@capitu/kb';
-import { zodToJsonSchema } from './schema.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { type ServerContext, buildContext, shutdownContext } from './context.js';
+import { zodToJsonSchema } from './schema.js';
 import { runTool } from './tool.js';
 import { ALL_TOOLS } from './tools/index.js';
 

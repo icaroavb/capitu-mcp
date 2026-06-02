@@ -1,6 +1,6 @@
+import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { mkdirSync } from 'node:fs';
 import Database, { type Database as DB } from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.js';
@@ -27,9 +27,9 @@ export function openKb(opts: OpenOptions = {}): DB {
 
   if (!opts.readonly) {
     db.exec(SCHEMA_SQL);
-    const row = db
-      .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
-      .get() as { value: string } | undefined;
+    const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
+      | { value: string }
+      | undefined;
     if (!row) {
       db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?)").run(
         String(SCHEMA_VERSION),

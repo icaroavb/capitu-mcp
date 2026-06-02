@@ -30,10 +30,7 @@ export const listProposalsTool: CapituTool<typeof listSchema, ListProposalsOutpu
   category: 'docs-read',
   inputSchema: listSchema,
   handler: async (input, ctx) => {
-    const all = listProposals(
-      ctx.kb,
-      input.status === 'all' ? undefined : input.status,
-    );
+    const all = listProposals(ctx.kb, input.status === 'all' ? undefined : input.status);
     const sliced = all.slice(0, input.limit);
     return {
       total: all.length,

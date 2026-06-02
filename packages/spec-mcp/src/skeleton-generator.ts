@@ -118,7 +118,9 @@ define view entity ${art.name} as
 function generateCdsProjection(art: Artifact): SkeletonResult {
   const notes: string[] = [];
   if (!art.basedOn) {
-    notes.push('Projection requires basedOn (the composite or interface to project). Edit before writing.');
+    notes.push(
+      'Projection requires basedOn (the composite or interface to project). Edit before writing.',
+    );
   }
   const source = `@AccessControl.authorizationCheck: #NOT_REQUIRED
 @EndUserText.label: '${escapeLabel(art.description)}'
@@ -194,7 +196,10 @@ function generateBehaviorDefinition(art: Artifact): SkeletonResult {
     'If you need draft, add `draft table z<name>_d` and `with draft` after the implementation clause.',
   ];
   const implClass = `ZBP_${art.name.replace(/^Z[A-Z]_/, '').toUpperCase()}`;
-  const alias = art.name.replace(/^Z[A-Z]_/, '').toLowerCase().replace(/_/g, '');
+  const alias = art.name
+    .replace(/^Z[A-Z]_/, '')
+    .toLowerCase()
+    .replace(/_/g, '');
   const source = `managed implementation in class ${implClass.toLowerCase()} unique;
 strict ( 2 );
 
@@ -250,9 +255,7 @@ function buildFieldsBlock(
 
   if (!projection && basedOn) {
     if (unresolvedCount === 0 && fields) {
-      notes.push(
-        `Field source columns resolved from ${basedOn} via ADT — no placeholders remain.`,
-      );
+      notes.push(`Field source columns resolved from ${basedOn} via ADT — no placeholders remain.`);
     } else if (unresolvedCount > 0 && fields) {
       notes.push(
         `${unresolvedCount}/${exposes.length} field(s) kept as <SOURCE_FIELD>: ${exposes

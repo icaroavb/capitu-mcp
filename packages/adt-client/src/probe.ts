@@ -14,9 +14,7 @@ import type { ProbedEnvironment, SapEdition } from './types.js';
  * a single canonical "system info" endpoint across versions. The first one
  * that responds with a usable string wins; null is returned otherwise.
  */
-export async function probeEnvironment(
-  c: CapituAdtClient,
-): Promise<ProbedEnvironment> {
+export async function probeEnvironment(c: CapituAdtClient): Promise<ProbedEnvironment> {
   const start = Date.now();
   await c.connect();
 
@@ -60,9 +58,7 @@ async function detectRelease(c: CapituAdtClient): Promise<string | null> {
       featureDetails?: (svc: string) => Promise<unknown>;
     };
     if (typeof raw.featureDetails === 'function') {
-      const details = (await raw.featureDetails(
-        'discovery',
-      )) as { title?: string };
+      const details = (await raw.featureDetails('discovery')) as { title?: string };
       const m = details?.title?.match(/(\d{3})/);
       if (m) return m[1] ?? null;
     }

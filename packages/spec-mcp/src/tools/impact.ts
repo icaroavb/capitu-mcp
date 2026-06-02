@@ -14,7 +14,9 @@ const impactSchema = z.object({
   uri: z
     .string()
     .min(1)
-    .describe('ADT URI of the object being analyzed (e.g. /sap/bc/adt/ddic/ddl/sources/zi_flight_gmivb)'),
+    .describe(
+      'ADT URI of the object being analyzed (e.g. /sap/bc/adt/ddic/ddl/sources/zi_flight_gmivb)',
+    ),
 });
 
 export interface ImpactOutput {
@@ -50,13 +52,7 @@ export const impactTool: CapituTool<typeof impactSchema, ImpactOutput> = {
 
     const total = refs.length;
     const tier: ImpactOutput['riskTier'] =
-      total === 0
-        ? 'isolated'
-        : total <= 3
-          ? 'low'
-          : total <= 10
-            ? 'medium'
-            : 'high';
+      total === 0 ? 'isolated' : total <= 3 ? 'low' : total <= 10 ? 'medium' : 'high';
 
     const highlights = refs.slice(0, 10).map((r) => ({
       type: r.type,

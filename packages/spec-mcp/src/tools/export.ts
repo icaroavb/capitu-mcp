@@ -49,9 +49,7 @@ export const exportDocxTool: CapituTool<typeof exportDocxSchema, ExportDocxOutpu
   category: 'docs-read',
   inputSchema: exportDocxSchema,
   handler: async (input) => {
-    const finalName = input.filename
-      ? `${input.filename}.${input.format}`
-      : undefined;
+    const finalName = input.filename ? `${input.filename}.${input.format}` : undefined;
     const result =
       input.format === 'docx'
         ? await writeMarkdownAsDocx({
@@ -105,7 +103,12 @@ export const exportProposalTool: CapituTool<typeof exportProposalSchema, ExportD
       artifacts: Array<{ name: string; kind: string; description: string; source?: string }>;
       executionOrder: string[];
     };
-    const md = renderProposalAsMarkdown(payload, proposal.token, proposal.status, proposal.createdAt);
+    const md = renderProposalAsMarkdown(
+      payload,
+      proposal.token,
+      proposal.status,
+      proposal.createdAt,
+    );
     const result =
       input.format === 'docx'
         ? await writeMarkdownAsDocx({
@@ -198,7 +201,12 @@ export const listOutputsTool: CapituTool<typeof listOutputsSchema, ListOutputsRe
     for (const cat of Object.keys(listing.byCategory) as Array<keyof typeof listing.byCategory>) {
       if (input.category !== 'all' && input.category !== cat) continue;
       for (const f of listing.byCategory[cat]) {
-        files.push({ category: cat, filename: f.filename, bytes: f.bytes, modifiedAt: f.modifiedAt });
+        files.push({
+          category: cat,
+          filename: f.filename,
+          bytes: f.bytes,
+          modifiedAt: f.modifiedAt,
+        });
       }
     }
     files.sort((a, b) => (b.modifiedAt > a.modifiedAt ? 1 : -1));
