@@ -32,6 +32,10 @@ capitu-output/**
 # Use .mcp.example.json as template.
 .mcp.json
 
+# Multi-instance profiles — contain tenant host/user. Local only.
+# Use instances.example.json as template; real file lives in ~/.capitu/.
+instances.json
+
 # Smoke / integration scripts — local only (hit live SAP).
 scripts/smoke-test-adt*.ts
 scripts/integration-test-adt.ts

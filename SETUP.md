@@ -101,6 +101,25 @@ Reinicie o Claude Code para aplicar.
 
 > ⚠️ Mantenha `$TMP` como único pacote permitido até estar confiante. Erro em um prompt pode criar/alterar objetos no SAP.
 
+## Configurar várias instâncias (consultor)
+
+Para alternar entre sistemas SAP sem reabrir o Claude Code:
+
+1. Copie [`instances.example.json`](instances.example.json) para `~/.capitu/instances.json` e edite os perfis (cada um com `name`, `url`, `user`, `client`, `language`, `passwordEnv`).
+2. Para cada instância, salve a senha na env var nomeada em `passwordEnv` (escopo User):
+   ```powershell
+   $secure = Read-Host -AsSecureString "Senha do cliente X"
+   $plain = [System.Net.NetworkCredential]::new("", $secure).Password
+   [Environment]::SetEnvironmentVariable("SAP_PASSWORD_CLIENTEX", $plain, "User")
+   $plain = $null; Remove-Variable secure
+   ```
+3. Abra um PowerShell novo (herda as env vars) e rode `claude`.
+4. No Claude Code: *"liste minhas instâncias"*, depois *"conecta no cliente X"*.
+
+A senha **nunca** fica no `instances.json` — só o nome da variável. O arquivo
+está no `.gitignore` (contém host/usuário). Sem ele, o capitu usa as env vars
+`SAP_*` como instância única.
+
 ## Próximos passos
 
 - Veja [`README.md`](README.md) para entender as 30+ tools disponíveis

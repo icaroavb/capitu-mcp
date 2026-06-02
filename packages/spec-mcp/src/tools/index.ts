@@ -2,6 +2,7 @@ import { applyTool } from './apply.js';
 import { draftTool } from './draft.js';
 import { exportDocxTool, exportProposalTool, listOutputsTool } from './export.js';
 import { impactTool } from './impact.js';
+import { listInstancesTool, useInstanceTool, whichInstanceTool } from './instances.js';
 import { learnTool, recallTool } from './learn.js';
 import { listProposalsTool } from './proposals-list.js';
 import { proposeTool } from './propose.js';
@@ -24,6 +25,10 @@ export const ALL_TOOLS = [
   // Learnings cross-agent (2)
   learnTool,
   recallTool,
+  // Instance management (3) — list/inspect/switch active SAP system at runtime
+  listInstancesTool,
+  whichInstanceTool,
+  useInstanceTool,
 ] as const;
 
 export type AnyCapituSpecTool = (typeof ALL_TOOLS)[number];
@@ -40,4 +45,7 @@ export {
   listOutputsTool,
   learnTool,
   recallTool,
+  listInstancesTool,
+  whichInstanceTool,
+  useInstanceTool,
 };

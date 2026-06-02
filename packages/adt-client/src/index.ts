@@ -6,6 +6,12 @@ export {
 } from './client.js';
 export { probeEnvironment, classifyEdition } from './probe.js';
 export {
+  InstanceRegistry,
+  type RegistryProfile,
+  type RegistryBridge,
+  type InstanceSummary,
+} from './instance-registry.js';
+export {
   BDEF_COLLECTION,
   BDEF_CONTENT_TYPE,
   SRVB_COLLECTION,

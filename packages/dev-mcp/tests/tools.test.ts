@@ -1,12 +1,14 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CapituAdtClient } from '@capitu/adt-client';
+import { type CapituAdtClient, InstanceRegistry } from '@capitu/adt-client';
 import {
   type ComplianceContext,
   CompliancePolicyViolation,
   FakeEmbeddings,
+  getActiveInstance,
   openKb,
+  setActiveInstance,
 } from '@capitu/kb';
 import type { Database } from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,6 +22,7 @@ import {
   createServiceDefinitionTool,
   findReferencesTool,
   learnTool,
+  listInstancesTool,
   listTransportsTool,
   publishServiceBindingTool,
   readObjectTool,
@@ -29,6 +32,8 @@ import {
   syntaxCheckTool,
   transportContentsTool,
   unpublishServiceBindingTool,
+  useInstanceTool,
+  whichInstanceTool,
   writeObjectTool,
 } from '../src/tools/index.js';
 
@@ -936,6 +941,78 @@ describe('compliance still enforced', () => {
     };
     await expect(runTool(grayTool, { sourceUri: '/x' }, ctx)).rejects.toThrow(
       CompliancePolicyViolation,
+    );
+  });
+});
+
+describe('instance management tools', () => {
+  /**
+   * Builds a context whose `registry` is a real InstanceRegistry wired to the
+   * test DB's `meta` table (the same channel the 3 MCP processes share).
+   * Two fake instances; passwords resolved to a constant — no network. We test
+   * UseInstance with probe:false so it doesn't try to connect.
+   */
+  function buildInstanceContext(): { ctx: ServerContext; db: Database } {
+    const db = openKb({ path: join(dbDir, 'kb.db') });
+    openDbs.push(db);
+    const registry = new InstanceRegistry(
+      [
+        { name: 'dev', url: 'https://dev.s4hana.cloud.sap', user: 'U1', client: '100' },
+        { name: 'qas', url: 'https://qas.example.com', user: 'U2', edition: 'on-prem' },
+      ],
+      {
+        getActive: () => getActiveInstance(db),
+        setActive: (n) => setActiveInstance(db, n),
+        resolvePassword: () => 'pw',
+      },
+    );
+    const base = {
+      kb: db,
+      embeddings: fake,
+      registry,
+      compliance: { mode: 'strict' as const, riskAcknowledged: false },
+      agent: 'capitu-dev' as const,
+      writes: { allowed: false, allowedPackages: ['$TMP'] },
+    };
+    // Mirror buildContext(): `adt` is a getter resolving the active client, so
+    // the test exercises the same dynamic-switch behavior as production.
+    Object.defineProperty(base, 'adt', { enumerable: true, get: () => registry.active() });
+    return { ctx: base as ServerContext, db };
+  }
+
+  it('listInstances returns all instances and flags the active one', async () => {
+    const { ctx } = buildInstanceContext();
+    const out = await runTool(listInstancesTool, {}, ctx);
+    expect(out.active).toBe('dev'); // first instance when meta unset
+    expect(out.instances.map((i) => i.name).sort()).toEqual(['dev', 'qas']);
+    expect(out.instances.find((i) => i.name === 'dev')?.isActive).toBe(true);
+    // edition inferred from URL for dev (.s4hana.cloud.sap → pce)
+    expect(out.instances.find((i) => i.name === 'dev')?.edition).toBe('pce');
+  });
+
+  it('whichInstance reports the active instance summary (no secrets)', async () => {
+    const { ctx } = buildInstanceContext();
+    const out = await runTool(whichInstanceTool, {}, ctx);
+    expect(out.name).toBe('dev');
+    expect(out.url).toBe('https://dev.s4hana.cloud.sap');
+    expect(JSON.stringify(out)).not.toMatch(/pw/);
+  });
+
+  it('useInstance switches the active instance and persists to the shared meta', async () => {
+    const { ctx, db } = buildInstanceContext();
+    const out = await runTool(useInstanceTool, { name: 'qas', probe: false }, ctx);
+    expect(out.switched.name).toBe('qas');
+    expect(out.probe).toBeUndefined();
+    // Persisted to meta → another process would observe it.
+    expect(getActiveInstance(db)).toBe('qas');
+    // And the active getter now resolves the qas client.
+    expect(ctx.adt.url).toBe('https://qas.example.com');
+  });
+
+  it('useInstance rejects an unknown instance', async () => {
+    const { ctx } = buildInstanceContext();
+    await expect(runTool(useInstanceTool, { name: 'prd', probe: false }, ctx)).rejects.toThrow(
+      /Unknown instance "prd"/,
     );
   });
 });

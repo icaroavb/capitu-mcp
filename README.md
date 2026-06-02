@@ -56,11 +56,12 @@ claude            # abre o Claude Code com os 3 MCPs carregados
 
 | Var | Default | Descrição |
 |-----|---------|-----------|
-| `SAP_URL` | — | URL ADT do tenant (obrigatório) |
-| `SAP_USER` | — | Usuário SAP (obrigatório) |
-| `SAP_PASSWORD` | — | Senha SAP (obrigatório — env var, nunca em arquivo) |
-| `SAP_CLIENT` | — | Mandant (obrigatório para sistemas multi-client) |
+| `SAP_URL` | — | URL ADT do tenant. Obrigatório **só** no modo instância-única (sem `instances.json`) |
+| `SAP_USER` | — | Usuário SAP. Idem acima |
+| `SAP_PASSWORD` | — | Senha SAP (env var, nunca em arquivo). Usada por instâncias que não definem `passwordEnv` próprio |
+| `SAP_CLIENT` | — | Mandant (para sistemas multi-client) |
 | `SAP_LANGUAGE` | — | Idioma de logon (ex: PT, EN) — deve bater com o idioma original do sistema |
+| `CAPITU_INSTANCES_PATH` | `~/.capitu/instances.json` | Arquivo de perfis para uso multi-instância (ver seção abaixo) |
 | `CAPITU_KB_PATH` | `~/.capitu/kb.db` | Caminho do SQLite compartilhado |
 | `CAPITU_OUTPUT_DIR` | `<projeto>/capitu-output/` | Pasta onde `.docx` gerados são salvos |
 | `CAPITU_ALLOW_WRITES` | `false` | Habilita writes ADT no capitu-dev |
@@ -95,6 +96,31 @@ Nesse modo:
 2. Setar `VOYAGE_API_KEY` ou `CAPITU_EMBEDDINGS=local`
 3. Reabrir o Claude Code
 
+## Múltiplas instâncias (uso consultivo)
+
+Se você trabalha com **vários sistemas SAP** (clientes/landscapes), pode trocar a
+instância ativa **em runtime**, sem editar `.mcp.json` nem reabrir o Claude Code.
+
+1. Crie `~/.capitu/instances.json` a partir de [`instances.example.json`](instances.example.json).
+   Cada instância tem um `name`, a `url`, o `user`, e `passwordEnv` — o **nome** da
+   variável de ambiente que guarda a senha (a senha **nunca** vai no arquivo).
+2. Salve uma env var de senha por instância (escopo User, persistente):
+   ```powershell
+   [Environment]::SetEnvironmentVariable("SAP_PASSWORD_CLIENTEX", "<senha>", "User")
+   ```
+3. No Claude Code:
+   - *"liste as instâncias"* → `capituDevListInstances`
+   - *"conecta no cliente Y"* → `capituDevUseInstance` (faz um probe e confirma edition/release)
+   - *"onde estou conectado?"* → `capituDevWhichInstance`
+
+A troca vale para os **três** MCPs ao mesmo tempo (docs/dev/spec compartilham o
+estado pela KB), então uma única troca move a visão do ecossistema inteiro. As
+tools existem com os prefixos `capituDocs*`, `capituDev*` e `capituSpec*`.
+
+> **Compatibilidade:** sem `instances.json`, o capitu usa as env vars `SAP_*`
+> como uma instância implícita chamada `env` — tudo que já funcionava continua
+> funcionando.
+
 ## Compliance com SAP API Policy
 
 A SAP publicou em abril/2026 a [API Policy](https://www.sap.com/documents/2026/04/e2a0665e-4c7f-0010-bca6-c68f7e60039b.html). A **Questão 33** define o que é endossado via ADT (dev tooling) e o que está fora de escopo (leitura de dados de negócio, SQL livre, AI agêntica sobre dados de negócio).
@@ -126,11 +152,16 @@ Gaps que **nenhum** dos ~10 concorrentes MCP SAP em 2026 preenche, e que o capit
 
 ## Roadmap
 
-| Fase | Foco |
-|------|------|
-| 0 | Setup monorepo + KB lib ✅ |
-| 1 | capitu-docs MVP (ABAP keyword ingest + search) |
-| 2 | capitu-docs enriquecido (released APIs + aprendizado) |
-| 3 | capitu-dev MVP (read via ADT) |
-| 4 | capitu-dev write (safety gates + capability matrix) |
-| 5 | capitu-spec MVP |
+| Fase | Foco | Status |
+|------|------|--------|
+| 0 | Setup monorepo + KB lib | ✅ |
+| 1 | capitu-docs MVP (ABAP keyword ingest + search) | ✅ |
+| 2 | capitu-docs enriquecido (released APIs + aprendizado) | ✅ |
+| 3 | capitu-dev MVP (read via ADT) | ✅ |
+| 4 | capitu-dev write (safety gates + capability matrix) | ✅ |
+| 5 | capitu-spec MVP (draft→propose→apply, export .docx) | ✅ |
+| 6 | Stack RAP completo (BDEF/SRVD/SRVB + publish OData), edição method-level, resilience | ✅ |
+| 7 | Multi-instância dinâmica (perfis + `useInstance`) | ✅ |
+| — | Próximos: auth `service-key`, curador automático de learnings | ⏳ |
+
+> **Estado atual:** ~38 tools em 3 servidores cooperativos, 223 testes verdes.

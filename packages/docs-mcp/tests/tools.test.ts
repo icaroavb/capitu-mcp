@@ -1,18 +1,27 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { InstanceRegistry } from '@capitu/adt-client';
 import {
   type ComplianceContext,
   CompliancePolicyViolation,
   FakeEmbeddings,
+  getActiveInstance,
   insertDoc,
   openKb,
+  setActiveInstance,
 } from '@capitu/kb';
 import type { Database } from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ServerContext } from '../src/context.js';
 import { runTool } from '../src/tool.js';
-import { learnTool, recallLearningsTool, searchTool } from '../src/tools/index.js';
+import {
+  learnTool,
+  listInstancesTool,
+  recallLearningsTool,
+  searchTool,
+  useInstanceTool,
+} from '../src/tools/index.js';
 
 let dbDir: string;
 let openDbs: Database[] = [];
@@ -161,5 +170,43 @@ describe('compliance gate', () => {
       category: 'business-data-read' as const,
     };
     await expect(runTool(grayTool, { query: 'x' }, ctx)).rejects.toThrow(CompliancePolicyViolation);
+  });
+});
+
+describe('instance management tools (docs)', () => {
+  function buildInstanceContext(): { ctx: ServerContext; db: Database } {
+    const db = openKb({ path: join(dbDir, 'kb.db') });
+    openDbs.push(db);
+    const registry = new InstanceRegistry(
+      [
+        { name: 'dev', url: 'https://dev.s4hana.cloud.sap', user: 'U1' },
+        { name: 'qas', url: 'https://qas.example.com', user: 'U2' },
+      ],
+      {
+        getActive: () => getActiveInstance(db),
+        setActive: (n) => setActiveInstance(db, n),
+        resolvePassword: () => 'pw',
+      },
+    );
+    const base = {
+      kb: db,
+      embeddings: fake,
+      registry,
+      compliance: { mode: 'strict' as const, riskAcknowledged: false },
+      agent: 'capitu-docs' as const,
+    };
+    Object.defineProperty(base, 'adt', { enumerable: true, get: () => registry.active() });
+    return { ctx: base as ServerContext, db };
+  }
+
+  it('listInstances works and the switch propagates via shared meta', async () => {
+    const { ctx, db } = buildInstanceContext();
+    const list = await runTool(listInstancesTool, {}, ctx);
+    expect(list.active).toBe('dev');
+    expect(list.instances).toHaveLength(2);
+
+    await runTool(useInstanceTool, { name: 'qas', probe: false }, ctx);
+    expect(getActiveInstance(db)).toBe('qas'); // shared pointer updated
+    expect(ctx.adt.url).toBe('https://qas.example.com');
   });
 });

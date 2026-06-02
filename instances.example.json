@@ -1,0 +1,23 @@
+{
+  "_comment": "Template de ~/.capitu/instances.json (ou caminho em CAPITU_INSTANCES_PATH). Copie para ~/.capitu/instances.json e edite. NUNCA coloque senhas aqui — cada instância referencia o NOME de uma env var (passwordEnv) cujo valor é a senha.",
+  "active": "<nome-da-instancia-inicial>",
+  "instances": [
+    {
+      "name": "cliente-x-dev",
+      "url": "https://<host-do-tenant-x>",
+      "user": "<seu-usuario-no-x>",
+      "client": "100",
+      "language": "PT",
+      "edition": "pce",
+      "passwordEnv": "SAP_PASSWORD_CLIENTEX"
+    },
+    {
+      "name": "cliente-y-qas",
+      "url": "https://<host-do-tenant-y>",
+      "user": "<seu-usuario-no-y>",
+      "client": "200",
+      "language": "EN",
+      "passwordEnv": "SAP_PASSWORD_CLIENTEY"
+    }
+  ]
+}

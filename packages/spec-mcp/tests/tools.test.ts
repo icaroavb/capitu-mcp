@@ -1,8 +1,14 @@
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CapituAdtClient } from '@capitu/adt-client';
-import { type ComplianceContext, FakeEmbeddings, openKb } from '@capitu/kb';
+import { type CapituAdtClient, InstanceRegistry } from '@capitu/adt-client';
+import {
+  type ComplianceContext,
+  FakeEmbeddings,
+  getActiveInstance,
+  openKb,
+  setActiveInstance,
+} from '@capitu/kb';
 import type { Database } from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerContext } from '../src/context.js';
@@ -15,10 +21,12 @@ import {
   exportProposalTool,
   impactTool,
   learnTool,
+  listInstancesTool,
   listOutputsTool,
   listProposalsTool,
   proposeTool,
   recallTool,
+  useInstanceTool,
   validateTool,
 } from '../src/tools/index.js';
 
@@ -707,5 +715,43 @@ describe('cross-agent learnings (spec)', () => {
     const out = await runTool(recallTool, { query: 'naming convention projection' }, ctx);
     expect(out.matches.length).toBe(1);
     expect(out.matches[0]?.sourceAgent).toBe('capitu-spec');
+  });
+});
+
+describe('instance management tools (spec)', () => {
+  function buildInstanceContext(): { ctx: ServerContext; db: Database } {
+    const db = openKb({ path: join(dbDir, 'kb.db') });
+    openDbs.push(db);
+    const registry = new InstanceRegistry(
+      [
+        { name: 'dev', url: 'https://dev.s4hana.cloud.sap', user: 'U1' },
+        { name: 'qas', url: 'https://qas.example.com', user: 'U2' },
+      ],
+      {
+        getActive: () => getActiveInstance(db),
+        setActive: (n) => setActiveInstance(db, n),
+        resolvePassword: () => 'pw',
+      },
+    );
+    const base = {
+      kb: db,
+      embeddings: fake,
+      registry,
+      compliance: { mode: 'strict' as const, riskAcknowledged: false },
+      agent: 'capitu-spec' as const,
+    };
+    Object.defineProperty(base, 'adt', { enumerable: true, get: () => registry.active() });
+    return { ctx: base as ServerContext, db };
+  }
+
+  it('listInstances works and the switch propagates via shared meta', async () => {
+    const { ctx, db } = buildInstanceContext();
+    const list = await runTool(listInstancesTool, {}, ctx);
+    expect(list.active).toBe('dev');
+    expect(list.instances).toHaveLength(2);
+
+    await runTool(useInstanceTool, { name: 'qas', probe: false }, ctx);
+    expect(getActiveInstance(db)).toBe('qas');
+    expect(ctx.adt.url).toBe('https://qas.example.com');
   });
 });

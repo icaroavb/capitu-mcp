@@ -1,5 +1,6 @@
 import { documentObjectTool } from './document.js';
 import { editMethodTool } from './edit-method.js';
+import { listInstancesTool, useInstanceTool, whichInstanceTool } from './instances.js';
 import { learnTool, recallTool } from './learn.js';
 import {
   findReferencesTool,
@@ -54,6 +55,10 @@ export const ALL_TOOLS = [
   // Learnings (2) — cross-agent KB
   learnTool,
   recallTool,
+  // Instance management (3) — list/inspect/switch active SAP system at runtime
+  listInstancesTool,
+  whichInstanceTool,
+  useInstanceTool,
 ] as const;
 
 export type AnyCapituDevTool = (typeof ALL_TOOLS)[number];
@@ -81,4 +86,7 @@ export {
   unpublishServiceBindingTool,
   learnTool,
   recallTool,
+  listInstancesTool,
+  whichInstanceTool,
+  useInstanceTool,
 };

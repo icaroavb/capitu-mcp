@@ -224,3 +224,20 @@ Decisões específicas para S/4HANA Cloud Private Edition:
 - **Released APIs:** ao conectar, indexa o catálogo de released objects do tenant via `CL_ABAP_RELEASED_API`.
 - **OData V4 catalog:** descoberto via `/sap/opu/odata/IWFND/CATALOGSERVICE` e indexado em `tenant_catalog`.
 - **Release-aware:** o release exato do tenant (ex: S/4HANA 2023 FPS01) é descoberto e usado para indexar ABAP keyword docs da versão correta — não `latest`.
+
+## 11. Multi-instância dinâmica
+
+Consultores trabalham com vários sistemas. Em vez de uma conexão fixa lida no boot, o capitu resolve a instância **ativa** em runtime e permite trocá-la sem reiniciar.
+
+**Mecânica:**
+
+- `ServerContext.adt` não é mais um campo fixo — é um **getter** que delega a um `InstanceRegistry` (`packages/adt-client/src/instance-registry.ts`). As ~38 tools continuam chamando `ctx.adt.*` sem alteração; o cliente subjacente é resolvido por baixo.
+- Os perfis vêm de `~/.capitu/instances.json` (`CAPITU_INSTANCES_PATH`), carregados por `loadInstanceProfiles` (`packages/kb/src/instances.ts`). Sem o arquivo, há fallback para uma instância `env` sintetizada das env vars `SAP_*` — retrocompatível.
+- O ponteiro de **instância ativa** vive na tabela `meta` (key `active_instance`) do SQLite compartilhado. Como os 3 servidores são processos `stdio` **separados**, a KB é o único canal entre eles: uma troca feita no `capitu-dev` é observada por `docs`/`spec` na **próxima** chamada de tool deles. Resultado: visão de instância única e coerente no ecossistema.
+- O `InstanceRegistry` cacheia um `CapituAdtClient` por instância (lazy); ao detectar que o ativo mudou (inclusive out-of-band, por outro processo), desconecta o anterior best-effort e devolve o novo.
+
+**Segurança:** senhas nunca ficam no `instances.json`. Cada perfil referencia `passwordEnv` (nome de uma env var); o registry só resolve a senha no momento de construir o cliente, e o `list()` jamais expõe segredos.
+
+**Tools** (`metadata-read`, endorsed): `capitu{Dev,Docs,Spec}ListInstances`, `…WhichInstance`, `…UseInstance({name, probe})`. O `UseInstance` faz um `probeEnvironment` opcional para confirmar edition/release do alvo. Toda troca entra no audit `traces` via `withTrace`.
+
+**Direção de dependência preservada:** o `InstanceRegistry` (em `adt-client`) recebe a persistência por callbacks (`getActive`/`setActive`/`resolvePassword`), então `adt-client` não passa a depender de `@capitu/kb` — o wiring acontece no `context.ts` de cada MCP, que já importa ambos.

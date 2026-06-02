@@ -53,6 +53,17 @@ export {
   type ComplianceDecision,
   type ToolCategory,
 } from './compliance.js';
+export {
+  loadInstanceProfiles,
+  instancesPath,
+  getActiveInstance,
+  setActiveInstance,
+  resolvePassword,
+  ACTIVE_INSTANCE_META_KEY,
+  type InstanceProfile,
+  type InstanceProfilesResult,
+  type SapEditionHint,
+} from './instances.js';
 export type {
   DocChunk,
   StoredDoc,
