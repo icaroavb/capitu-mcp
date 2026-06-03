@@ -5,7 +5,7 @@ Ecossistema de **3 MCPs SAP cooperativos** com Knowledge Base compartilhada e ap
 ```
 ┌──────────────┐  ┌─────────────┐  ┌──────────────┐
 │ capitu-spec  │  │ capitu-dev  │  │ capitu-docs  │
-│ (spec téc.)  │  │ (ADT + dbg) │  │ (RAG SAP)    │
+│ (spec téc.)  │  │ (ADT R/W)   │  │ (RAG SAP)    │
 └──────┬───────┘  └──────┬──────┘  └──────┬───────┘
        └──────────┬──────┴────────────────┘
                   ▼
@@ -252,8 +252,9 @@ Gaps que **nenhum** dos ~10 concorrentes MCP SAP em 2026 preenche, e que o capit
 
 1. **Multi-MCP cooperativo** — três servidores especializados em vez de um monolito
 2. **Aprendizado contínuo** — KB cresce com uso, captura padrões do tenant
-3. **PCE como cidadão de primeira classe** — release contracts C0/C1/C2/C3, service keys, OData catalog do tenant
-4. **Debug + RAG juntos** — combinação que nenhum dos top-3 (ARC-1, vsp, mcp-sap-docs) oferece
+3. **PCE / on-premise como cidadão de primeira classe** — foco em sistemas que a entrada oficial da SAP atende mal (AI da SAP é cloud/RISE-first)
+4. **Multi-modelo, sem Joule, e coexiste com o MCP oficial SAP** — roda com Claude/Cursor/qualquer cliente MCP, sem licença paga; os nomes (`capitu*`) não colidem com os da SAP (`abap_*`), então os dois rodam lado a lado
+5. **Multi-instância consultiva com safety por instância** — troca de sistema em runtime, cada um com seu próprio gate read-only/allowlist (controle que o MCP oficial da SAP não tem)
 
 ## Comparação rápida com concorrentes
 
@@ -276,6 +277,8 @@ Gaps que **nenhum** dos ~10 concorrentes MCP SAP em 2026 preenche, e que o capit
 | 5 | capitu-spec MVP (draft→propose→apply, export .docx) | ✅ |
 | 6 | Stack RAP completo (BDEF/SRVD/SRVB + publish OData), edição method-level, resilience | ✅ |
 | 7 | Multi-instância dinâmica (perfis + `useInstance`) | ✅ |
-| — | Próximos: auth `service-key`, curador automático de learnings | ⏳ |
+| 8 | Safety por instância (ceiling), feature probing, auth cookie/bearer, tool visibility | ✅ |
+| 9 | `capituDevGrep` (busca regex no fonte), allowlist subtree `ZFOO/**`, coexistência VS Code | ✅ |
+| — | Próximos: class-section surgery, auth `service-key`, debug (ST22/breakpoints), curador automático de learnings | ⏳ |
 
-> **Estado atual:** ~38 tools em 3 servidores cooperativos, 223 testes verdes.
+> **Estado atual:** 48 tools (docs 8 · dev 26 · spec 14) em 3 servidores cooperativos, 269 testes verdes.

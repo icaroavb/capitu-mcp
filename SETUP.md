@@ -129,6 +129,6 @@ está no `.gitignore` (contém host/usuário). Sem ele, o capitu usa as env vars
 
 ## Próximos passos
 
-- Veja [`README.md`](README.md) para entender as ~40 tools disponíveis
+- Veja [`README.md`](README.md) para entender as 48 tools disponíveis
 - Veja [`ARCHITECTURE.md`](ARCHITECTURE.md) para entender o design dos 3 agentes
 - Teste a primeira tool: `Use capituDevSearch para procurar objetos ZI_* do tipo DDLS`
