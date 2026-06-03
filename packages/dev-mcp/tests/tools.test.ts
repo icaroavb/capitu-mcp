@@ -67,6 +67,7 @@ function buildTestContext(opts?: {
   restrictedByDefault?: boolean;
   permissive?: boolean;
   adtMock?: Partial<CapituAdtClient>;
+  packageHierarchy?: ServerContext['packageHierarchy'];
 }): ServerContext {
   const db = openKb({ path: join(dbDir, 'kb.db') });
   openDbs.push(db);
@@ -92,6 +93,11 @@ function buildTestContext(opts?: {
       allowed: opts?.writesAllowed ?? false,
       allowedPackages: opts?.allowedPackages ?? ['$TMP'],
       restrictedByDefault: opts?.restrictedByDefault ?? false,
+    },
+    // Subtree resolver: tests inject a fake; default denies everything (no subtree).
+    packageHierarchy: opts?.packageHierarchy ?? {
+      isDescendantOrSelf: async () => false,
+      invalidate: () => {},
     },
   };
 }
@@ -1083,5 +1089,47 @@ describe('per-instance write safety (ceiling + restrictive default)', () => {
         ctx,
       ),
     ).rejects.toThrow(/not in the effective allowlist/);
+  });
+
+  it('allows a write to a sub-package via a ZFOO/** subtree rule', async () => {
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      restrictedByDefault: false,
+      allowedPackages: ['ZIVB_APRENDIZAGEM/**'],
+      // Resolver says ZIVB_SUB1 is under ZIVB_APRENDIZAGEM.
+      packageHierarchy: {
+        isDescendantOrSelf: async (root, pkg) =>
+          root.toUpperCase() === 'ZIVB_APRENDIZAGEM' && pkg.toUpperCase() === 'ZIVB_SUB1',
+        invalidate: () => {},
+      },
+      adtMock: { createObject: vi.fn().mockResolvedValue(undefined) },
+    });
+    const out = await runTool(
+      createObjectTool,
+      { objectType: 'CLAS/OC', name: 'ZCL_SUB', description: 'x', packageName: 'ZIVB_SUB1' },
+      ctx,
+    );
+    expect(out).toBeDefined();
+  });
+
+  it('denies (fail-closed) when subtree resolution throws', async () => {
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      restrictedByDefault: false,
+      allowedPackages: ['ZIVB_APRENDIZAGEM/**'],
+      packageHierarchy: {
+        isDescendantOrSelf: async () => {
+          throw new Error('denying the write for safety: network down');
+        },
+        invalidate: () => {},
+      },
+    });
+    await expect(
+      runTool(
+        createObjectTool,
+        { objectType: 'CLAS/OC', name: 'ZCL_X', description: 'x', packageName: 'ZIVB_SUB1' },
+        ctx,
+      ),
+    ).rejects.toThrow(/denying the write for safety/);
   });
 });

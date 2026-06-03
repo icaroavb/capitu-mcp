@@ -1,3 +1,4 @@
+import { grepSource } from '@capitu/adt-client';
 import { z } from 'zod';
 import type { CapituTool } from '../tool.js';
 
@@ -218,5 +219,61 @@ export const findReferencesTool: CapituTool<typeof findRefsSchema, FindReference
       total: refs.length,
       references: refs,
     };
+  },
+};
+
+// ---- Grep (regex search within an object's source) --------------------------
+
+const grepSchema = z.object({
+  sourceUri: z
+    .string()
+    .min(1)
+    .describe('ADT source URI to search within (e.g. /sap/bc/adt/oo/classes/zcl_x/source/main).'),
+  pattern: z
+    .string()
+    .min(1)
+    .describe(
+      'Case-insensitive regex to search for. Falls back to a literal search if the ' +
+        'pattern is not valid regex (so "read_entities(" works without escaping).',
+    ),
+  contextLines: z
+    .number()
+    .int()
+    .min(0)
+    .max(20)
+    .optional()
+    .describe('Lines of context on each side of a match (default 3).'),
+  maxMatches: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe('Maximum matches to render (default 100).'),
+});
+
+export interface GrepOutput {
+  uri: string;
+  matchCount: number;
+  /** Formatted match report with 1-based line numbers + context. */
+  report: string;
+}
+
+export const grepTool: CapituTool<typeof grepSchema, GrepOutput> = {
+  name: 'capituDevGrep',
+  description:
+    "Regex-search WITHIN a single object's source and return only matching lines plus " +
+    'a little surrounding context (not the full source). The token-efficient "search → ' +
+    'locate → read" pattern: grep to find the line, then read around it. Case-insensitive, ' +
+    'with literal fallback for unescaped metacharacters.',
+  category: 'code-read',
+  inputSchema: grepSchema,
+  handler: async (input, ctx): Promise<GrepOutput> => {
+    const src = await ctx.adt.getSource(input.sourceUri);
+    const res = grepSource(src.source, input.pattern, {
+      contextLines: input.contextLines,
+      maxMatches: input.maxMatches,
+    });
+    return { uri: src.uri, matchCount: res.matchCount, report: res.output };
   },
 };

@@ -20,6 +20,14 @@ export {
   type FeatureId,
   type FeatureStatus,
 } from './features.js';
+export { grepSource, type GrepOptions, type GrepResult } from './grep.js';
+export {
+  AdtPackageHierarchyResolver,
+  matchesSubtreeRule,
+  type PackageHierarchyResolver,
+  type DirectSubpackageFetcher,
+  type PackageHierarchyResolverOptions,
+} from './package-hierarchy.js';
 export {
   BDEF_COLLECTION,
   BDEF_CONTENT_TYPE,

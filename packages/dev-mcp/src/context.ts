@@ -1,4 +1,11 @@
-import { type CapituAdtClient, InstanceRegistry, type RegistryProfile } from '@capitu/adt-client';
+import {
+  AdtPackageHierarchyResolver,
+  type CapituAdtClient,
+  InstanceRegistry,
+  type PackageHierarchyResolver,
+  type RegistryProfile,
+  matchesSubtreeRule,
+} from '@capitu/adt-client';
 import {
   type ComplianceContext,
   type EmbeddingsProvider,
@@ -52,6 +59,8 @@ export interface ServerContext {
   activeProfileName: string;
   /** Tool-visibility map from instances.json (tool→enabled). Undefined = all on. */
   toolVisibility?: Record<string, boolean>;
+  /** Resolves `ZFOO/**` subtree allowlist rules against the active instance. */
+  packageHierarchy: PackageHierarchyResolver;
 }
 
 export interface ServerContextOptions {
@@ -93,11 +102,14 @@ function computeWriteGate(registry: InstanceRegistry, ceiling: EnvCeiling): Writ
 
   // Packages: profile narrows the env list; if the profile didn't declare any,
   // inherit env. Intersection keeps only env-permitted patterns the profile lists.
+  // Subtree rules (`ZFOO/**`) pass through verbatim — they are resolved later by
+  // the hierarchy resolver, not by textual intersection here.
   let allowedPackages: string[];
   if (safety.allowedPackages && safety.allowedPackages.length > 0) {
-    allowedPackages = safety.allowedPackages.filter((p) =>
-      isPackageAllowed(p.endsWith('*') ? p.slice(0, -1) || '$' : p, ceiling.allowedPackages),
-    );
+    allowedPackages = safety.allowedPackages.filter((p) => {
+      if (p.endsWith('/**')) return true; // subtree rule — keep, resolve at write time
+      return isPackageAllowed(p.endsWith('*') ? p.slice(0, -1) || '$' : p, ceiling.allowedPackages);
+    });
     // If the profile listed packages but none survive the env ceiling, the
     // gate is effectively empty (nothing writable) — keep it empty, not env.
   } else {
@@ -114,6 +126,12 @@ export function buildContext(opts: ServerContextOptions = {}): ServerContext {
   const compliance = loadComplianceFromEnv();
   const ceiling = readEnvCeiling();
 
+  // Subtree resolver: the fetcher always targets the ACTIVE instance's client,
+  // so switching instances keeps subtree resolution pointed at the right system.
+  const packageHierarchy = new AdtPackageHierarchyResolver((root) =>
+    registry.active().getSubpackages(root),
+  );
+
   const ctx = {
     kb,
     embeddings,
@@ -121,6 +139,7 @@ export function buildContext(opts: ServerContextOptions = {}): ServerContext {
     compliance,
     agent: 'capitu-dev' as const,
     toolVisibility,
+    packageHierarchy,
   };
   // `adt`, `writes`, `activeProfileName` resolve against the active instance on
   // every access, so a runtime switch is reflected without rebuilding ctx.
@@ -133,7 +152,9 @@ export function buildContext(opts: ServerContextOptions = {}): ServerContext {
     enumerable: true,
     get: () => registry.activeName(),
   });
-  return ctx as ServerContext;
+  // `adt`/`writes`/`activeProfileName` are installed as getters above; the base
+  // object literal lacks them, so cast through unknown.
+  return ctx as unknown as ServerContext;
 }
 
 /**
@@ -212,7 +233,10 @@ export function isPackageAllowed(packageName: string, patterns: string[]): boole
  *   2. Package not in the (env ∩ profile) allowlist — explain which list
  *      blocked it and how to widen the right one.
  */
-export function assertWritesEnabled(ctx: ServerContext, packageName: string | undefined): void {
+export async function assertWritesEnabled(
+  ctx: ServerContext,
+  packageName: string | undefined,
+): Promise<void> {
   const inst = ctx.activeProfileName;
   if (!ctx.writes.allowed) {
     if (ctx.writes.restrictedByDefault) {
@@ -229,9 +253,17 @@ export function assertWritesEnabled(ctx: ServerContext, packageName: string | un
       `Cannot determine the target package for the write to instance "${inst}" — blocked. Pass packageName explicitly.`,
     );
   }
-  if (!isPackageAllowed(packageName, ctx.writes.allowedPackages)) {
-    throw new Error(
-      `Package '${packageName}' is not in the effective allowlist for instance "${inst}" (currently [${ctx.writes.allowedPackages.join(', ') || '(empty)'}]). This is the intersection of the server ceiling (CAPITU_ALLOWED_PACKAGES) and the instance profile\'s allowedPackages.\n\nTo allow it:\n  - If the instance profile lists packages: edit ~/.capitu/instances.json → "${inst}".allowedPackages, add '${packageName}' (wildcards like 'Z*' work), then capituDevUseInstance("${inst}") again (no restart).\n  - If the server ceiling is the blocker: widen CAPITU_ALLOWED_PACKAGES in .mcp.json and relaunch.\nThe allowlist is a deliberate safety gate against accidental writes to system namespaces.`,
-    );
+  // Fast path: exact / trailing-* patterns matched synchronously.
+  if (isPackageAllowed(packageName, ctx.writes.allowedPackages)) return;
+  // Subtree path: only `X/**` patterns reach the resolver (one ADT call, cached).
+  // Resolution failure is fail-closed (throws → write denied).
+  const hasSubtreeRule = ctx.writes.allowedPackages.some((p) => p.endsWith('/**'));
+  if (hasSubtreeRule && ctx.packageHierarchy) {
+    if (await matchesSubtreeRule(packageName, ctx.writes.allowedPackages, ctx.packageHierarchy)) {
+      return;
+    }
   }
+  throw new Error(
+    `Package '${packageName}' is not in the effective allowlist for instance "${inst}" (currently [${ctx.writes.allowedPackages.join(', ') || '(empty)'}]). This is the intersection of the server ceiling (CAPITU_ALLOWED_PACKAGES) and the instance profile's allowedPackages. Subtree rules like 'ZFOO/**' match a package and all its sub-packages.\n\nTo allow it:\n  - If the instance profile lists packages: edit ~/.capitu/instances.json → "${inst}".allowedPackages, add '${packageName}' (wildcards like 'Z*' or subtree 'ZFOO/**' work), then capituDevUseInstance("${inst}") again (no restart).\n  - If the server ceiling is the blocker: widen CAPITU_ALLOWED_PACKAGES in .mcp.json and relaunch.\nThe allowlist is a deliberate safety gate against accidental writes to system namespaces.`,
+  );
 }

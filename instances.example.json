@@ -7,7 +7,7 @@
   },
   "instances": [
     {
-      "_comment": "Instância de DEV com escrita habilitada, limitada a pacotes Z*/Y*. readOnly:false é obrigatório para permitir writes (default é read-only).",
+      "_comment": "DEV com escrita habilitada. readOnly:false é obrigatório (default é read-only). allowedPackages aceita exato (ZFOO), prefixo (Z*) e subárvore (ZFOO/** = o pacote e todos os sub-pacotes, resolvidos via ADT).",
       "name": "cliente-x-dev",
       "url": "https://<host-do-tenant-x>",
       "user": "<seu-usuario-no-x>",
@@ -16,7 +16,7 @@
       "edition": "pce",
       "passwordEnv": "SAP_PASSWORD_CLIENTEX",
       "readOnly": false,
-      "allowedPackages": ["$TMP", "Z*", "Y*"]
+      "allowedPackages": ["$TMP", "ZIVB_APRENDIZAGEM/**"]
     },
     {
       "_comment": "Produtivo: SEM readOnly declarado → fica read-only por padrão (seguro). Mesmo que CAPITU_ALLOW_WRITES=true, esta instância bloqueia writes até você declarar readOnly:false.",

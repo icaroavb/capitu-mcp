@@ -196,6 +196,42 @@ export class CapituAdtClient {
   }
 
   /**
+   * List the DIRECT sub-packages of a package (DEVC/K children only).
+   *
+   * Used by the `allowedPackages` subtree rule (`ZFOO/**`) via
+   * AdtPackageHierarchyResolver. Calls POST /sap/bc/adt/repository/nodestructure
+   * with the asx:abap envelope ADT requires (a bare GET returns 406). The shape
+   * + filter (DEVC/K only, drop DEVC/KI package-interfaces) is verified against
+   * ARC-1's getSubpackages. Names are uppercased + deduped; the queried package
+   * itself is excluded.
+   */
+  async getSubpackages(packageName: string): Promise<string[]> {
+    await this.connect();
+    const enc = encodeURIComponent(packageName);
+    const url = `/sap/bc/adt/repository/nodestructure?parent_type=${encodeURIComponent('DEVC/K')}&parent_name=${enc}&parent_tech_name=${enc}&withShortDescriptions=true`;
+    const body =
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">' +
+      '<asx:values><DATA><TV_NODEKEY>000000</TV_NODEKEY></DATA></asx:values>' +
+      '</asx:abap>';
+    let respBody: string;
+    try {
+      const resp = await rawAdtPostWithAccept(
+        this.inner,
+        url,
+        body,
+        'application/vnd.sap.as+xml; charset=UTF-8; dataname=null',
+        'application/vnd.sap.as+xml',
+      );
+      respBody = resp.body;
+    } catch (err) {
+      throw wrapAdtError(err, `getSubpackages(${packageName})`);
+    }
+    const self = packageName.toUpperCase();
+    return parseSubpackageNames(respBody).filter((n) => n !== self);
+  }
+
+  /**
    * Inspect a package's structural attributes — the ones that control whether
    * objects can be created inside it. Reads the package metadata XML at
    * `/sap/bc/adt/packages/<name>` and surfaces the attributes that matter
@@ -1166,6 +1202,33 @@ function attr(attrString: string, name: string): string {
   const re = new RegExp(`\\b${name}="([^"]*)"`);
   const m = attrString.match(re);
   return m?.[1] ?? '';
+}
+
+/**
+ * Parse the `nodestructure` response into DEVC/K child package names.
+ *
+ * The body is an asx:abap envelope with `<SEU_ADT_REPOSITORY_OBJ_NODE>` rows,
+ * each carrying `<OBJECT_TYPE>` and `<OBJECT_NAME>`. We keep only `DEVC/K`
+ * (real packages — not `DEVC/KI` package interfaces or other node types),
+ * uppercase + dedupe. Tolerant regex parser (no XML AST dep), mirroring the
+ * other parsers in this file. Empty body → no children.
+ */
+function parseSubpackageNames(xml: string): string[] {
+  if (!xml || xml.trim() === '') return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const nodeRe = /<SEU_ADT_REPOSITORY_OBJ_NODE\b[^>]*>([\s\S]*?)<\/SEU_ADT_REPOSITORY_OBJ_NODE>/g;
+  let m: RegExpExecArray | null;
+  while ((m = nodeRe.exec(xml)) !== null) {
+    const block = m[1];
+    const type = innerText(block, 'OBJECT_TYPE');
+    if (type !== 'DEVC/K') continue;
+    const name = innerText(block, 'OBJECT_NAME').trim().toUpperCase();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    out.push(name);
+  }
+  return out;
 }
 
 function countAbapObjects(blockXml: string): number {

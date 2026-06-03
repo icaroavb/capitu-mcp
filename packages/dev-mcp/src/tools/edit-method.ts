@@ -101,7 +101,7 @@ export const editMethodTool: CapituTool<typeof editMethodSchema, EditMethodOutpu
   category: 'code-write',
   inputSchema: editMethodSchema,
   handler: async (input, ctx): Promise<EditMethodOutput> => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
 
     const includeKind: IncludeKind =
       input.include === 'auto' ? inferIncludeKind(input.methodName) : input.include;

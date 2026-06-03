@@ -85,7 +85,7 @@ export const createObjectTool: CapituTool<typeof createObjectSchema, CreateObjec
   category: 'code-write',
   inputSchema: createObjectSchema,
   handler: async (input, ctx) => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
     const transport = await effectiveTransport(ctx.adt, input.packageName, input.transport);
     await ctx.adt.createObject({
       objectType: input.objectType,
@@ -169,7 +169,7 @@ export const applyArtifactTool: CapituTool<typeof applyArtifactSchema, ApplyArti
   category: 'code-write',
   inputSchema: applyArtifactSchema,
   handler: async (input, ctx) => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
 
     const lowerName = input.name.toLowerCase();
     const uri = buildObjectUri(input.objectType, lowerName);
@@ -425,7 +425,7 @@ export const writeObjectTool: CapituTool<typeof writeObjectSchema, WriteObjectOu
   category: 'code-write',
   inputSchema: writeObjectSchema,
   handler: async (input, ctx) => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
 
     // Pre-write syntax check on the proposed content
     let syntaxFindings: SyntaxCheckOutput['findings'] = [];
@@ -531,7 +531,7 @@ export const writeClassBundleTool: CapituTool<
   category: 'code-write',
   inputSchema: writeClassBundleSchema,
   handler: async (input, ctx): Promise<WriteClassBundleOutput> => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
     const transport = await effectiveTransport(ctx.adt, input.packageName, input.transport);
     const result = await ctx.adt.writeClassBundle({
       classObjectUri: input.classObjectUri,
@@ -573,7 +573,7 @@ export const activateTool: CapituTool<typeof activateSchema, ActivateOutput> = {
   category: 'code-write',
   inputSchema: activateSchema,
   handler: async (input, ctx) => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
     const r = await ctx.adt.activate(input.objectName, input.objectUri, input.mainInclude);
     return {
       success: r.success,

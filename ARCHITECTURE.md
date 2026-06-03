@@ -250,5 +250,21 @@ Cada `InstanceProfile` carrega configuração que o código existente lê do **p
 - **Feature probing.** `probeFeatures` (`packages/adt-client/src/features.ts`) faz GET leve em ~6 endpoints e classifica o status HTTP (2xx/400/405/5xx→disponível; 401→indeterminado; 403→sem-autz; 404→ICF-off). Chamado no `useInstance`; resultado vai pro `tenant_catalog` (`type:'feature'`, `name:"<instância>:<feature>"`). Lógica nossa, ideia do `features.ts` do ARC-1.
 - **Auth cookie/bearer.** `authMode` no perfil (`basic`|`cookie`|`bearer`). `buildInner` em `client.ts` monta o `ADTClient`: bearer usa o `BearerFetcher` que a lib aceita no slot de senha; cookie injeta o header `Cookie` via `ClientOptions.headers` (com placeholder de senha, pois a lib rejeita senha vazia na construção). Segredos nunca no arquivo (`cookieFile`/`bearerEnv`).
 - **Tool visibility.** Mapa `tools` na raiz do `instances.json` (`{nome: bool}`). O `ListTools`/dispatch dos 3 `server.ts` filtra por `isToolEnabled`; as tools de instância são imunes (senão o usuário se tranca fora). Espelha `SystemsConfig.Tools` do vsp.
+- **Subtree allowlist `ZFOO/**`.** `allowedPackages` aceita regra de subárvore além de exato/prefixo. `AdtPackageHierarchyResolver` (`packages/adt-client/src/package-hierarchy.ts`) resolve a hierarquia DEVCLASS via `client.getSubpackages` (POST `/sap/bc/adt/repository/nodestructure`), com cache TTL, caps anti-ciclo e **fail-closed** (erro de resolução = nega). `assertWritesEnabled` ficou async: padrões exato/`Z*` no caminho síncrono; só `X/**` dispara o resolver. Porta de `arc-1/src/adt/package-hierarchy.ts`.
+- **`capituDevGrep`.** Busca regex no fonte de um objeto (`grepSource` puro em `packages/adt-client/src/grep.ts`), contexto ±linhas, fallback literal. Porta de `arc-1/src/context/grep.ts`.
 
-> **Contexto competitivo:** a SAP lançou (jun/2026) a extensão oficial *ADT for VS Code* com MCP próprio (Joule, cloud-first, pago, sem AI de terceiros). O nicho do capitu — PCE, multi-modelo (Claude), sem licença paga, aprendizado contínuo, multi-instância consultiva — fica reforçado. Integração com essa extensão é um follow-up em aberto.
+## 12. Coexistência e posicionamento vs SAP ADT for VS Code
+
+A SAP lançou (jun/2026) a extensão oficial **ABAP Development Tools for VS Code** com um **ADT MCP server** próprio. Fatos verificados (teardown ao vivo documentado pelo autor do ARC-1):
+
+- Roda num **Eclipse headless embutido** (SAP Machine JRE 21 + JCo); transporte **Streamable HTTP em `localhost:2236/mcp`** (Anthropic MCP Java SDK); **bearer estático localhost-only**; **sem scopes/package-gates/audit**.
+- **14 tools `abap_*`** (activate, run_unit_tests, creation×4, business_services×2, generators×3, transport×2, list_destinations) + tools dinâmicas por destino.
+- Dev-tooling compatível NW 7.3+, mas **AI só cloud/RISE** (PCE 2021-23 planejado); **licença paga** (Joule); **sem AI de terceiros** (só GenAI Hub da SAP).
+
+**Estratégia do capitu: coexistência, não competição.**
+
+- **Sem colisão de nomes:** SAP=`abap_*` (snake_case), capitu=`capitu*` (camelCase). Os dois MCPs podem ser habilitados no mesmo cliente (Claude Code, VS Code, Cursor).
+- **Divisão de trabalho:** a SAP entrega skills Joule integradas ao IDE em sistemas cloud/RISE; o capitu entrega **PCE como cidadão de 1ª classe**, **safety controls por instância** (read-only/allowlist/ceiling — que o MCP da SAP não tem), **transport**, **multi-modelo sem Joule** e **aprendizado contínuo + multi-instância consultiva**.
+- **Vantagem de clareza:** o capitu fala ADT REST direto — funciona em qualquer sistema com ADT, sem a "virtual workspace" da SAP (que quebra compat com algumas ferramentas de IA).
+
+Follow-ups em aberto: integração técnica real (ABAP FS / `abap-file-formats` open-source da SAP para workflows file-based + git sem abapGit); a `class-section surgery` (porta do ARC-1) aguarda captura de um `objectstructure` real do tenant para validar o parser dos 2 formatos (7.50 split / 7.58 unified).

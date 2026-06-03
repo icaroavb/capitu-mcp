@@ -4,6 +4,7 @@ import { listInstancesTool, useInstanceTool, whichInstanceTool } from './instanc
 import { learnTool, recallTool } from './learn.js';
 import {
   findReferencesTool,
+  grepTool,
   inspectPackageTool,
   readObjectTool,
   readPackageTool,
@@ -26,12 +27,13 @@ import {
 } from './write.js';
 
 export const ALL_TOOLS = [
-  // Read group (5)
+  // Read group (6)
   readObjectTool,
   readPackageTool,
   inspectPackageTool,
   searchTool,
   findReferencesTool,
+  grepTool,
   // Check + atomic apply + granular write group (6)
   syntaxCheckTool,
   applyArtifactTool,
@@ -69,6 +71,7 @@ export {
   inspectPackageTool,
   searchTool,
   findReferencesTool,
+  grepTool,
   syntaxCheckTool,
   applyArtifactTool,
   createObjectTool,

@@ -136,6 +136,11 @@ aperta, nunca afrouxa:
 > o capitu explica que está em modo restritivo e dá o passo-a-passo para liberar
 > (editar o perfil + `capituDevUseInstance` de novo — sem reiniciar).
 
+`allowedPackages` aceita: nome exato (`ZFOO`), prefixo (`Z*`), e **subárvore**
+`ZFOO/**` — o pacote `ZFOO` e todos os sub-pacotes dele (resolve a hierarquia
+real via ADT, com cache). A resolução é **fail-closed**: se a hierarquia não
+puder ser consultada, o write é negado por segurança.
+
 ### Autenticação alternativa (cookie / bearer)
 
 Além de senha (`basic`), uma instância pode usar SSO por cookie ou OAuth:
@@ -157,6 +162,32 @@ instância nunca podem ser desligadas.
 > **Compatibilidade:** sem `instances.json`, o capitu usa as env vars `SAP_*`
 > como uma instância implícita chamada `env` — tudo que já funcionava continua
 > funcionando.
+
+## Coexistência com a extensão oficial SAP ADT for VS Code
+
+Em jun/2026 a SAP lançou a extensão oficial **ABAP Development Tools for VS Code**,
+que inclui um **ADT MCP server próprio** (14 tools `abap_*` em `localhost:2236`,
+parte do *Joule for Developers* — cloud-first, licença paga, sem AI de terceiros).
+
+O capitu **coexiste** com ela, não compete:
+
+- **Nomes não colidem:** tools da SAP são `abap_*`; as do capitu são `capitu*`.
+  Você pode habilitar os dois MCPs no mesmo cliente.
+- **Divisão de trabalho:** a SAP cobre skills Joule em sistemas cloud/RISE; o capitu
+  cobre **PCE/on-premise**, **safety controls por instância** (que o MCP da SAP não
+  tem), **transport**, **multi-modelo** (Claude/Cursor/qualquer cliente MCP, sem Joule)
+  e **aprendizado contínuo** + **multi-instância**.
+
+Para usar o capitu no VS Code, aponte um `.vscode/mcp.json` (ou as settings de MCP do
+seu cliente) para os 3 servidores — o mesmo comando `npx tsx .../server.ts` do
+`.mcp.json` do Claude Code. Detalhes de posicionamento em [ARCHITECTURE.md §12](ARCHITECTURE.md).
+
+## Busca e cirurgia de código
+
+- **`capituDevGrep`** — busca **regex dentro do código-fonte** de um objeto e retorna
+  só as linhas que casam + contexto (não o fonte inteiro). É o padrão "grep para achar
+  a linha, depois leia em volta" — econômico em tokens. Case-insensitive, com fallback
+  literal (se você esquecer de escapar `read_entities(`, funciona mesmo assim).
 
 ## Compliance com SAP API Policy
 

@@ -143,7 +143,7 @@ export const createServiceDefinitionTool: CapituTool<
   category: 'code-write',
   inputSchema: createServiceDefinitionSchema,
   handler: async (input, ctx): Promise<CreateServiceDefinitionOutput> => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
     const alias = input.alias?.trim() || defaultAlias(input.exposedCdsView);
     const source = input.source ?? buildSrvdSource(input.name, alias, input.exposedCdsView);
     const transport = await effectiveTransport(ctx, input.packageName, input.transport);
@@ -273,7 +273,7 @@ export const createServiceBindingTool: CapituTool<
   category: 'code-write',
   inputSchema: createServiceBindingSchema,
   handler: async (input, ctx): Promise<CreateServiceBindingOutput> => {
-    assertWritesEnabled(ctx, input.packageName);
+    await assertWritesEnabled(ctx, input.packageName);
     const transport = await effectiveTransport(ctx, input.packageName, input.transport);
 
     const created = await ctx.adt.createSrvbRaw({
