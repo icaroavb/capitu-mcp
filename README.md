@@ -250,11 +250,11 @@ Detalhes em [ARCHITECTURE.md §8](ARCHITECTURE.md).
 
 Gaps que **nenhum** dos ~10 concorrentes MCP SAP em 2026 preenche, e que o capitu ataca:
 
-1. **Multi-MCP cooperativo** — três servidores especializados em vez de um monolito
-2. **Aprendizado contínuo** — KB cresce com uso, captura padrões do tenant
-3. **PCE / on-premise como cidadão de primeira classe** — foco em sistemas que a entrada oficial da SAP atende mal (AI da SAP é cloud/RISE-first)
-4. **Multi-modelo, sem Joule, e coexiste com o MCP oficial SAP** — roda com Claude/Cursor/qualquer cliente MCP, sem licença paga; os nomes (`capitu*`) não colidem com os da SAP (`abap_*`), então os dois rodam lado a lado
-5. **Multi-instância consultiva com safety por instância** — troca de sistema em runtime, cada um com seu próprio gate read-only/allowlist (controle que o MCP oficial da SAP não tem)
+1. **Multi-instância consultiva (dinâmica)** — troca o sistema SAP ativo **em runtime**, sem reiniciar; um comando (`capituUseInstance`) move os três MCPs de uma vez. Feito para consultores que tocam vários clientes. Cada instância tem seu **próprio gate de segurança** (read-only / allowlist por perfil) — controle que o MCP oficial da SAP não oferece.
+2. **Multi-MCP cooperativo** — três servidores especializados em vez de um monolito
+3. **Aprendizado contínuo** — KB cresce com uso, captura padrões do tenant
+4. **PCE / on-premise como cidadão de primeira classe** — foco em sistemas que a entrada oficial da SAP atende mal (AI da SAP é cloud/RISE-first)
+5. **Multi-modelo, sem Joule, e coexiste com o MCP oficial SAP** — roda com Claude/Cursor/qualquer cliente MCP, sem licença paga; os nomes (`capitu*`) não colidem com os da SAP (`abap_*`), então os dois rodam lado a lado
 
 ## Comparação rápida com concorrentes
 
@@ -263,7 +263,7 @@ Gaps que **nenhum** dos ~10 concorrentes MCP SAP em 2026 preenche, e que o capit
 | ARC-1 | TS | Enterprise + BTP/XSUAA | 78 |
 | vsp | Go | Debug + análise nativa | 340 |
 | mcp-sap-docs | TS | RAG SAP (largura) | 176 |
-| **capitu** | **TS** | **Multi-agente + PCE + aprendizado** | **0 (novo)** |
+| **capitu** | **TS** | **Multi-instância + multi-agente + PCE + aprendizado** | **0 (novo)** |
 
 ## Roadmap
 
