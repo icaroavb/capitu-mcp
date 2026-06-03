@@ -18,6 +18,24 @@ Ecossistema de **3 MCPs SAP cooperativos** com Knowledge Base compartilhada e ap
             S/4HANA Cloud PCE (ADT REST)
 ```
 
+## Antes de começar — você vai precisar de
+
+O capitu é um conjunto de **servidores MCP**: ele dá superpoderes SAP a um
+assistente de IA (Claude). Ele **não é** um app standalone — roda *dentro* de um
+cliente MCP. Então, antes de instalar, garanta os três pré-requisitos:
+
+| # | Pré-requisito | Como obter / verificar |
+|---|---------------|------------------------|
+| 1 | **Node.js 22+** | `winget install OpenJS.NodeJS.LTS` · verifique com `node --version` |
+| 2 | **Claude Code CLI + conta Anthropic** | Instale de [code.claude.com](https://code.claude.com); precisa de uma assinatura ativa. Verifique com `claude --version`. (É o `claude` que carrega o capitu.) |
+| 3 | **Acesso a um SAP com ADT habilitado** | URL do sistema, usuário, senha e mandante. Qualquer S/4HANA moderno onde você tenha permissão de desenvolvedor. Se você usa o Eclipse com ADT, já tem isso. |
+
+> Sem os três, o capitu não tem como funcionar. O item 2 é o mais esquecido:
+> o passo final do setup é abrir o `claude`, que **precisa estar instalado**.
+
+> 🪟 **Plataforma:** o instalador (`install.ps1`) é **Windows / PowerShell**.
+> Em Mac/Linux, siga o "Modo manual" em [SETUP.md](SETUP.md) (mesmos passos, à mão).
+
 ## Estrutura
 
 ```
@@ -37,12 +55,40 @@ capitu-mcp/
 ## Setup rápido
 
 ```powershell
-git clone <url-do-repo> capitu-mcp
+git clone https://github.com/icaroavb/capitu-mcp.git
 cd capitu-mcp
 .\install.ps1
 ```
 
-O instalador pergunta dados SAP, salva credenciais como variáveis Windows persistentes, gera `.mcp.json` e roda `npm install`. Detalhes em [SETUP.md](SETUP.md).
+O instalador checa os pré-requisitos, pergunta os dados SAP, salva a senha como
+variável Windows persistente (nunca em arquivo), gera o `.mcp.json` e roda
+`npm install`. Detalhes em [SETUP.md](SETUP.md).
+
+## Primeiro uso (importante)
+
+Depois do `install.ps1`:
+
+```powershell
+# 1. Abra um PowerShell NOVO (para herdar as variáveis de ambiente salvas)
+# 2. Entre na pasta do projeto — o claude SÓ carrega o capitu se aberto AQUI:
+cd caminho\para\capitu-mcp
+# 3. Abra o Claude Code:
+claude
+```
+
+No Claude Code:
+
+1. Rode `/mcp` — os três servidores (`capitu-docs`, `capitu-dev`, `capitu-spec`)
+   devem aparecer como **✓ connected**.
+2. Teste com um comando read-only, por exemplo:
+   *"use o capituDevSearch para listar objetos ZI_* do tipo DDLS"*.
+
+> ⚠️ **Gotcha nº 1:** o `claude` precisa ser aberto **de dentro da pasta do
+> projeto** (onde está o `.mcp.json`). Aberto em outro diretório, os servidores
+> capitu não aparecem no `/mcp` — e parece que "não funcionou".
+
+> 🔒 Por padrão o capitu **não escreve** no SAP (read-only). Habilitar escrita é
+> opt-in explícito — veja "Segurança por instância" abaixo.
 
 ## Comandos comuns
 

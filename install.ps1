@@ -63,6 +63,29 @@ try {
     exit 1
 }
 
+# Claude Code CLI — não bloqueia o setup, mas é necessário para USAR o capitu.
+# O passo final ('claude') falha sem ele, então avisamos cedo.
+try {
+    $claudeVersion = (claude --version) 2>$null
+    if ($claudeVersion) {
+        Write-Host "  ✓ Claude Code CLI ($claudeVersion)" -ForegroundColor Green
+    } else {
+        throw "claude não encontrado"
+    }
+} catch {
+    Write-Host "  ⚠️  Claude Code CLI não está no PATH." -ForegroundColor Yellow
+    Write-Host "     O setup continua, MAS você vai precisar dele para usar o capitu." -ForegroundColor Gray
+    Write-Host "     Instale em: https://code.claude.com (requer conta Anthropic ativa)." -ForegroundColor Gray
+}
+
+# git — informativo (você já clonou se chegou aqui, mas confirma o ambiente).
+try {
+    $gitVersion = (git --version) 2>$null
+    if ($gitVersion) { Write-Host "  ✓ $gitVersion" -ForegroundColor Green }
+} catch {
+    Write-Host "  ⚠️  git não está no PATH (não é obrigatório para o setup)." -ForegroundColor Yellow
+}
+
 if (-not (Test-Path ".mcp.example.json")) {
     Write-Host "  ✗ .mcp.example.json não encontrado. Rode este script da raiz do projeto." -ForegroundColor Red
     exit 1

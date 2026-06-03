@@ -5,7 +5,7 @@ Você tem **2 caminhos**: o instalador automático (recomendado) ou setup manual
 ## ✨ Caminho rápido: instalador
 
 ```powershell
-git clone <url-do-repo> capitu-mcp
+git clone https://github.com/icaroavb/capitu-mcp.git
 cd capitu-mcp
 .\install.ps1
 ```
