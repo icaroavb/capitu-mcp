@@ -206,7 +206,9 @@ function parseInstancesFile(raw: string, path: string): InstanceProfile[] {
         !Array.isArray(e.allowedPackages) ||
         !e.allowedPackages.every((p) => typeof p === 'string')
       ) {
-        throw new Error(`instance "${name}" in ${path}: "allowedPackages" must be an array of strings.`);
+        throw new Error(
+          `instance "${name}" in ${path}: "allowedPackages" must be an array of strings.`,
+        );
       }
       allowedPackages = e.allowedPackages as string[];
     }
@@ -237,9 +239,11 @@ function parseInstancesFile(raw: string, path: string): InstanceProfile[] {
       readOnly: typeof e.readOnly === 'boolean' ? e.readOnly : undefined,
       allowedPackages,
       authMode,
-      cookieFile: typeof e.cookieFile === 'string' && e.cookieFile.trim() ? e.cookieFile.trim() : undefined,
+      cookieFile:
+        typeof e.cookieFile === 'string' && e.cookieFile.trim() ? e.cookieFile.trim() : undefined,
       cookieString: typeof e.cookieString === 'string' ? e.cookieString : undefined,
-      bearerEnv: typeof e.bearerEnv === 'string' && e.bearerEnv.trim() ? e.bearerEnv.trim() : undefined,
+      bearerEnv:
+        typeof e.bearerEnv === 'string' && e.bearerEnv.trim() ? e.bearerEnv.trim() : undefined,
     };
   });
 }
@@ -286,7 +290,7 @@ export function resolvePassword(
  * semantic error when neither yields a value.
  */
 export function resolveCookie(profile: InstanceProfile): string {
-  if (profile.cookieString && profile.cookieString.trim()) return profile.cookieString.trim();
+  if (profile.cookieString?.trim()) return profile.cookieString.trim();
   if (profile.cookieFile) {
     let content: string;
     try {
@@ -301,8 +305,7 @@ export function resolveCookie(profile: InstanceProfile): string {
     if (trimmed) return trimmed;
   }
   throw new Error(
-    `Instance "${profile.name}" uses authMode "cookie" but neither cookieString nor a ` +
-      'non-empty cookieFile was provided.',
+    `Instance "${profile.name}" uses authMode "cookie" but neither cookieString nor a non-empty cookieFile was provided.`,
   );
 }
 
@@ -318,8 +321,7 @@ export function resolveBearer(
   const varName = profile.bearerEnv;
   if (!varName) {
     throw new Error(
-      `Instance "${profile.name}" uses authMode "bearer" but "bearerEnv" (the env var ` +
-        'holding the token) is not set.',
+      `Instance "${profile.name}" uses authMode "bearer" but "bearerEnv" (the env var holding the token) is not set.`,
     );
   }
   return async () => {

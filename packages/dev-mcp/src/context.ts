@@ -159,8 +159,7 @@ export function buildInstanceRegistry(kb: Database): {
     readOnly: p.readOnly,
     allowedPackages: p.allowedPackages,
   }));
-  const lookup = (name: string) =>
-    byName.get(name) ?? { name, url: '', user: '' };
+  const lookup = (name: string) => byName.get(name) ?? { name, url: '', user: '' };
   const registry = new InstanceRegistry(profiles, {
     getActive: () => getActiveInstance(kb),
     setActive: (name) => setActiveInstance(kb, name),
@@ -218,40 +217,21 @@ export function assertWritesEnabled(ctx: ServerContext, packageName: string | un
   if (!ctx.writes.allowed) {
     if (ctx.writes.restrictedByDefault) {
       throw new Error(
-        `Writes to instance "${inst}" are blocked: this instance is in READ-ONLY-BY-DEFAULT mode ` +
-          'because its profile does not explicitly allow writes. This is the safe default for a ' +
-          'newly-configured system.\n\nTo enable writes for this instance:\n' +
-          `  1. Edit ~/.capitu/instances.json, find the instance "${inst}", and add:\n` +
-          '       "readOnly": false,\n' +
-          '       "allowedPackages": ["$TMP", "Z*"]   (adjust to your sandbox packages)\n' +
-          '  2. Save the file.\n' +
-          `  3. Run capituDevUseInstance("${inst}") again — the profile is re-read, NO restart needed.\n\n` +
-          'Note: writes also require the server-wide ceiling CAPITU_ALLOW_WRITES=true; a profile can ' +
-          'only narrow that ceiling, never widen it.',
+        `Writes to instance "${inst}" are blocked: this instance is in READ-ONLY-BY-DEFAULT mode because its profile does not explicitly allow writes. This is the safe default for a newly-configured system.\n\nTo enable writes for this instance:\n  1. Edit ~/.capitu/instances.json, find the instance "${inst}", and add:\n       "readOnly": false,\n       "allowedPackages": ["$TMP", "Z*"]   (adjust to your sandbox packages)\n  2. Save the file.\n  3. Run capituDevUseInstance("${inst}") again — the profile is re-read, NO restart needed.\n\nNote: writes also require the server-wide ceiling CAPITU_ALLOW_WRITES=true; a profile can only narrow that ceiling, never widen it.`,
       );
     }
     throw new Error(
-      `Writes are disabled by the server-wide ceiling for instance "${inst}". ` +
-        'Set CAPITU_ALLOW_WRITES=true in the capitu-dev env (.mcp.json) and relaunch Claude Code. ' +
-        'The per-instance profile may also need "readOnly": false.',
+      `Writes are disabled by the server-wide ceiling for instance "${inst}". Set CAPITU_ALLOW_WRITES=true in the capitu-dev env (.mcp.json) and relaunch Claude Code. The per-instance profile may also need "readOnly": false.`,
     );
   }
   if (!packageName) {
     throw new Error(
-      `Cannot determine the target package for the write to instance "${inst}" — blocked. ` +
-        'Pass packageName explicitly.',
+      `Cannot determine the target package for the write to instance "${inst}" — blocked. Pass packageName explicitly.`,
     );
   }
   if (!isPackageAllowed(packageName, ctx.writes.allowedPackages)) {
     throw new Error(
-      `Package '${packageName}' is not in the effective allowlist for instance "${inst}" ` +
-        `(currently [${ctx.writes.allowedPackages.join(', ') || '(empty)'}]). This is the intersection ` +
-        'of the server ceiling (CAPITU_ALLOWED_PACKAGES) and the instance profile\'s allowedPackages.\n\n' +
-        'To allow it:\n' +
-        `  - If the instance profile lists packages: edit ~/.capitu/instances.json → "${inst}".allowedPackages, ` +
-        `add '${packageName}' (wildcards like 'Z*' work), then capituDevUseInstance("${inst}") again (no restart).\n` +
-        '  - If the server ceiling is the blocker: widen CAPITU_ALLOWED_PACKAGES in .mcp.json and relaunch.\n' +
-        'The allowlist is a deliberate safety gate against accidental writes to system namespaces.',
+      `Package '${packageName}' is not in the effective allowlist for instance "${inst}" (currently [${ctx.writes.allowedPackages.join(', ') || '(empty)'}]). This is the intersection of the server ceiling (CAPITU_ALLOWED_PACKAGES) and the instance profile\'s allowedPackages.\n\nTo allow it:\n  - If the instance profile lists packages: edit ~/.capitu/instances.json → "${inst}".allowedPackages, add '${packageName}' (wildcards like 'Z*' work), then capituDevUseInstance("${inst}") again (no restart).\n  - If the server ceiling is the blocker: widen CAPITU_ALLOWED_PACKAGES in .mcp.json and relaunch.\nThe allowlist is a deliberate safety gate against accidental writes to system namespaces.`,
     );
   }
 }

@@ -14,9 +14,7 @@ import { ALL_TOOLS } from './tools/index.js';
  */
 function isAlwaysOnTool(name: string): boolean {
   return (
-    name.endsWith('ListInstances') ||
-    name.endsWith('WhichInstance') ||
-    name.endsWith('UseInstance')
+    name.endsWith('ListInstances') || name.endsWith('WhichInstance') || name.endsWith('UseInstance')
   );
 }
 

@@ -6,8 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   type InstanceProfile,
   getActiveInstance,
+  isToolEnabled,
   loadInstanceProfiles,
   openKb,
+  resolveBearer,
+  resolveCookie,
   resolvePassword,
   setActiveInstance,
 } from '../src/index.js';
@@ -158,5 +161,118 @@ describe('resolvePassword', () => {
   it('defaults to SAP_PASSWORD when passwordEnv is absent', () => {
     const p: InstanceProfile = { name: 'q', url: 'https://q', user: 'U' };
     expect(resolvePassword(p, envWith({ SAP_PASSWORD: 'fallback' }))).toBe('fallback');
+  });
+});
+
+describe('per-instance safety fields', () => {
+  it('parses readOnly and allowedPackages', () => {
+    const path = writeInstances({
+      instances: [
+        {
+          name: 'prod',
+          url: 'https://prod',
+          user: 'U',
+          readOnly: true,
+          allowedPackages: ['Z*', 'Y*'],
+        },
+      ],
+    });
+    const res = loadInstanceProfiles(envWith({ CAPITU_INSTANCES_PATH: path }));
+    expect(res.instances[0]).toMatchObject({ readOnly: true, allowedPackages: ['Z*', 'Y*'] });
+  });
+
+  it('leaves readOnly undefined when not declared (restrictive default applied by caller)', () => {
+    const path = writeInstances({ instances: [{ name: 'x', url: 'https://x', user: 'U' }] });
+    const res = loadInstanceProfiles(envWith({ CAPITU_INSTANCES_PATH: path }));
+    expect(res.instances[0]?.readOnly).toBeUndefined();
+    expect(res.instances[0]?.allowedPackages).toBeUndefined();
+  });
+
+  it('rejects a non-array allowedPackages', () => {
+    const path = writeInstances({
+      instances: [{ name: 'x', url: 'https://x', user: 'U', allowedPackages: 'Z*' }],
+    });
+    expect(() => loadInstanceProfiles(envWith({ CAPITU_INSTANCES_PATH: path }))).toThrow(
+      /allowedPackages.*array/,
+    );
+  });
+});
+
+describe('authMode + secret resolvers', () => {
+  it('parses a valid authMode and rejects an invalid one', () => {
+    const ok = writeInstances({
+      instances: [{ name: 'b', url: 'https://b', user: 'U', authMode: 'bearer', bearerEnv: 'TKN' }],
+    });
+    expect(
+      loadInstanceProfiles(envWith({ CAPITU_INSTANCES_PATH: ok })).instances[0]?.authMode,
+    ).toBe('bearer');
+    const bad = writeInstances({
+      instances: [{ name: 'b', url: 'https://b', user: 'U', authMode: 'kerberos' }],
+    });
+    expect(() => loadInstanceProfiles(envWith({ CAPITU_INSTANCES_PATH: bad }))).toThrow(/authMode/);
+  });
+
+  it('resolveCookie prefers cookieString, falls back to cookieFile, else throws', () => {
+    const inline: InstanceProfile = {
+      name: 'c',
+      url: 'https://c',
+      user: 'U',
+      authMode: 'cookie',
+      cookieString: 'SAP_SESSIONID=abc; path=/',
+    };
+    expect(resolveCookie(inline)).toBe('SAP_SESSIONID=abc; path=/');
+
+    const file = join(dir, 'cookie.txt');
+    writeFileSync(file, '  MYSAPSSO2=xyz  \n', 'utf8');
+    const fromFile: InstanceProfile = {
+      name: 'c',
+      url: 'https://c',
+      user: 'U',
+      authMode: 'cookie',
+      cookieFile: file,
+    };
+    expect(resolveCookie(fromFile)).toBe('MYSAPSSO2=xyz');
+
+    const none: InstanceProfile = { name: 'c', url: 'https://c', user: 'U', authMode: 'cookie' };
+    expect(() => resolveCookie(none)).toThrow(/neither cookieString nor/);
+  });
+
+  it('resolveBearer returns a fetcher reading the env var at call time', async () => {
+    const p: InstanceProfile = {
+      name: 'b',
+      url: 'https://b',
+      user: 'U',
+      authMode: 'bearer',
+      bearerEnv: 'MY_TOKEN',
+    };
+    const fetcher = resolveBearer(p, envWith({ MY_TOKEN: 'tok-123' }));
+    await expect(fetcher()).resolves.toBe('tok-123');
+
+    const missing = resolveBearer(p, envWith({}));
+    await expect(missing()).rejects.toThrow(/MY_TOKEN is unset/);
+  });
+
+  it('resolveBearer throws when bearerEnv is not set', () => {
+    const p: InstanceProfile = { name: 'b', url: 'https://b', user: 'U', authMode: 'bearer' };
+    expect(() => resolveBearer(p, envWith({}))).toThrow(/bearerEnv/);
+  });
+});
+
+describe('tool visibility map', () => {
+  it('parses the root tools map and isToolEnabled honors it', () => {
+    const path = writeInstances({
+      tools: { capituDevSearch: false, capituDevReadObject: true },
+      instances: [{ name: 'x', url: 'https://x', user: 'U' }],
+    });
+    const res = loadInstanceProfiles(envWith({ CAPITU_INSTANCES_PATH: path }));
+    expect(res.tools).toEqual({ capituDevSearch: false, capituDevReadObject: true });
+    expect(isToolEnabled('capituDevSearch', res.tools)).toBe(false);
+    expect(isToolEnabled('capituDevReadObject', res.tools)).toBe(true);
+    // unlisted → enabled by default
+    expect(isToolEnabled('capituDevActivate', res.tools)).toBe(true);
+  });
+
+  it('isToolEnabled defaults to enabled when the map is absent', () => {
+    expect(isToolEnabled('anything', undefined)).toBe(true);
   });
 });

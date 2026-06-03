@@ -39,7 +39,14 @@ export function buildContext(opts: ServerContextOptions = {}): ServerContext {
   const embeddings = opts.embeddings ?? resolveEmbeddingsProvider();
   const compliance = loadComplianceFromEnv();
 
-  const ctx = { kb, embeddings, registry, compliance, agent: 'capitu-docs' as const, toolVisibility };
+  const ctx = {
+    kb,
+    embeddings,
+    registry,
+    compliance,
+    agent: 'capitu-docs' as const,
+    toolVisibility,
+  };
   // `adt` resolves the active instance's client on every access.
   Object.defineProperty(ctx, 'adt', {
     enumerable: true,

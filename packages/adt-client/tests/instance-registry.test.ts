@@ -124,3 +124,100 @@ describe('InstanceRegistry', () => {
     expect(() => reg.activeName()).toThrow(/No SAP instances configured/);
   });
 });
+
+describe('InstanceRegistry auth modes + safety', () => {
+  const AUTH_PROFILES: RegistryProfile[] = [
+    { name: 'basic', url: 'https://b', user: 'U', authMode: 'basic' },
+    { name: 'cook', url: 'https://c', user: 'U', authMode: 'cookie' },
+    { name: 'bear', url: 'https://br', user: 'U', authMode: 'bearer' },
+  ];
+
+  function authBridge(active: string): RegistryBridge {
+    return {
+      getActive: () => active,
+      setActive: () => {},
+      resolvePassword: () => 'pw',
+      resolveCookie: () => 'SAP_SESSIONID=abc',
+      resolveBearer: () => async () => 'tok',
+    };
+  }
+
+  it('builds a basic-auth client (password resolved)', () => {
+    const reg = new InstanceRegistry(AUTH_PROFILES, authBridge('basic'));
+    const c = reg.active();
+    expect(c.url).toBe('https://b');
+  });
+
+  it('builds a cookie-auth client without resolving a password', () => {
+    let pwCalls = 0;
+    const bridge: RegistryBridge = {
+      ...authBridge('cook'),
+      resolvePassword: () => {
+        pwCalls++;
+        return 'pw';
+      },
+    };
+    const reg = new InstanceRegistry(AUTH_PROFILES, bridge);
+    const c = reg.active();
+    expect(c.url).toBe('https://c');
+    expect(pwCalls).toBe(0); // cookie mode never touches the password resolver
+  });
+
+  it('builds a bearer-auth client without resolving a password', () => {
+    let pwCalls = 0;
+    const bridge: RegistryBridge = {
+      ...authBridge('bear'),
+      resolvePassword: () => {
+        pwCalls++;
+        return 'pw';
+      },
+    };
+    const reg = new InstanceRegistry(AUTH_PROFILES, bridge);
+    const c = reg.active();
+    expect(c.url).toBe('https://br');
+    expect(pwCalls).toBe(0);
+  });
+
+  it('throws when cookie mode is used but no cookie resolver is wired', () => {
+    const bridge: RegistryBridge = {
+      getActive: () => 'cook',
+      setActive: () => {},
+      resolvePassword: () => 'pw',
+      // no resolveCookie
+    };
+    const reg = new InstanceRegistry(AUTH_PROFILES, bridge);
+    expect(() => reg.active()).toThrow(/cookie.*resolver/i);
+  });
+
+  it('exposes the active instance declared safety via activeSafety()', () => {
+    const profiles: RegistryProfile[] = [
+      { name: 'ro', url: 'https://ro', user: 'U', readOnly: true, allowedPackages: ['Z*'] },
+      { name: 'rw', url: 'https://rw', user: 'U', readOnly: false },
+      { name: 'def', url: 'https://def', user: 'U' }, // no readOnly declared
+    ];
+    const mk = (active: string): RegistryBridge => ({
+      getActive: () => active,
+      setActive: () => {},
+      resolvePassword: () => 'pw',
+    });
+    expect(new InstanceRegistry(profiles, mk('ro')).activeSafety()).toEqual({
+      readOnlyDeclared: true,
+      allowedPackages: ['Z*'],
+    });
+    expect(new InstanceRegistry(profiles, mk('rw')).activeSafety()).toEqual({
+      readOnlyDeclared: false,
+      allowedPackages: undefined,
+    });
+    expect(new InstanceRegistry(profiles, mk('def')).activeSafety()).toEqual({
+      readOnlyDeclared: undefined,
+      allowedPackages: undefined,
+    });
+  });
+
+  it('list() surfaces authMode and readOnly', () => {
+    const reg = new InstanceRegistry(AUTH_PROFILES, authBridge('basic'));
+    const list = reg.list();
+    expect(list.find((i) => i.name === 'cook')?.authMode).toBe('cookie');
+    expect(list.find((i) => i.name === 'bear')?.authMode).toBe('bearer');
+  });
+});

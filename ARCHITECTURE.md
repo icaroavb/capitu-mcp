@@ -240,4 +240,15 @@ Consultores trabalham com vários sistemas. Em vez de uma conexão fixa lida no 
 
 **Tools** (`metadata-read`, endorsed): `capitu{Dev,Docs,Spec}ListInstances`, `…WhichInstance`, `…UseInstance({name, probe})`. O `UseInstance` faz um `probeEnvironment` opcional para confirmar edition/release do alvo. Toda troca entra no audit `traces` via `withTrace`.
 
-**Direção de dependência preservada:** o `InstanceRegistry` (em `adt-client`) recebe a persistência por callbacks (`getActive`/`setActive`/`resolvePassword`), então `adt-client` não passa a depender de `@capitu/kb` — o wiring acontece no `context.ts` de cada MCP, que já importa ambos.
+**Direção de dependência preservada:** o `InstanceRegistry` (em `adt-client`) recebe a persistência por callbacks (`getActive`/`setActive`/`resolvePassword`/`resolveCookie`/`resolveBearer`), então `adt-client` não passa a depender de `@capitu/kb` — o wiring acontece no `context.ts` de cada MCP, que já importa ambos.
+
+### 11.1 Capacidades por instância (inspiradas em ARC-1 + vsp)
+
+Cada `InstanceProfile` carrega configuração que o código existente lê do **perfil ativo** em vez de uma fonte global:
+
+- **Safety por instância (ceiling).** `readOnly` + `allowedPackages` no perfil. `ctx.writes` virou getter = **interseção** do teto env (`CAPITU_ALLOW_WRITES`/`CAPITU_ALLOWED_PACKAGES`) com o perfil ativo (`computeWriteGate` em `context.ts`). Um perfil só restringe. **Default restritivo:** perfil sem `readOnly` declarado → writes bloqueados (`restrictedByDefault`), e `assertWritesEnabled` (canônico em `context.ts`, usado pelos 3 write tools) emite mensagem explicando o modo + passo-a-passo de opt-in. Modelo do `read_only`/`allowed_packages` por sistema do vsp (`pkg/config/systems.go`).
+- **Feature probing.** `probeFeatures` (`packages/adt-client/src/features.ts`) faz GET leve em ~6 endpoints e classifica o status HTTP (2xx/400/405/5xx→disponível; 401→indeterminado; 403→sem-autz; 404→ICF-off). Chamado no `useInstance`; resultado vai pro `tenant_catalog` (`type:'feature'`, `name:"<instância>:<feature>"`). Lógica nossa, ideia do `features.ts` do ARC-1.
+- **Auth cookie/bearer.** `authMode` no perfil (`basic`|`cookie`|`bearer`). `buildInner` em `client.ts` monta o `ADTClient`: bearer usa o `BearerFetcher` que a lib aceita no slot de senha; cookie injeta o header `Cookie` via `ClientOptions.headers` (com placeholder de senha, pois a lib rejeita senha vazia na construção). Segredos nunca no arquivo (`cookieFile`/`bearerEnv`).
+- **Tool visibility.** Mapa `tools` na raiz do `instances.json` (`{nome: bool}`). O `ListTools`/dispatch dos 3 `server.ts` filtra por `isToolEnabled`; as tools de instância são imunes (senão o usuário se tranca fora). Espelha `SystemsConfig.Tools` do vsp.
+
+> **Contexto competitivo:** a SAP lançou (jun/2026) a extensão oficial *ADT for VS Code* com MCP próprio (Joule, cloud-first, pago, sem AI de terceiros). O nicho do capitu — PCE, multi-modelo (Claude), sem licença paga, aprendizado contínuo, multi-instância consultiva — fica reforçado. Integração com essa extensão é um follow-up em aberto.

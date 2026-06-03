@@ -217,7 +217,9 @@ export class InstanceRegistry {
     let client: CapituAdtClient;
     if (mode === 'cookie') {
       if (!this.bridge.resolveCookie) {
-        throw new Error(`Instance "${name}" uses authMode "cookie" but no cookie resolver is wired.`);
+        throw new Error(
+          `Instance "${name}" uses authMode "cookie" but no cookie resolver is wired.`,
+        );
       }
       client = new CapituAdtClient({
         ...base,
@@ -227,7 +229,9 @@ export class InstanceRegistry {
       });
     } else if (mode === 'bearer') {
       if (!this.bridge.resolveBearer) {
-        throw new Error(`Instance "${name}" uses authMode "bearer" but no bearer resolver is wired.`);
+        throw new Error(
+          `Instance "${name}" uses authMode "bearer" but no bearer resolver is wired.`,
+        );
       }
       client = new CapituAdtClient({
         ...base,

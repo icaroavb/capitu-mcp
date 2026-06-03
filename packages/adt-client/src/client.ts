@@ -909,8 +909,12 @@ function buildInner(opts: AdtConnectionOptions): ADTClient {
     if (!opts.cookie) {
       throw new Error('authMode "cookie" requires a cookie string.');
     }
-    // Empty password; cookie carried via the client options headers.
-    return new ADTClient(opts.url, opts.user, '', opts.client, opts.language, {
+    // abap-adt-api rejects an empty password at construction, so we pass a
+    // non-empty placeholder. It is never used for auth: our explicit Cookie
+    // header takes precedence (AdtHTTP only falls back to its own cookie jar
+    // when no Cookie header is present), and the SAP session cookie is the
+    // real credential. The placeholder just satisfies the constructor guard.
+    return new ADTClient(opts.url, opts.user, 'cookie-auth', opts.client, opts.language, {
       headers: { Cookie: opts.cookie },
     } as unknown as ConstructorParameters<typeof ADTClient>[5]);
   }

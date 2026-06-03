@@ -1,23 +1,48 @@
 {
-  "_comment": "Template de ~/.capitu/instances.json (ou caminho em CAPITU_INSTANCES_PATH). Copie para ~/.capitu/instances.json e edite. NUNCA coloque senhas aqui — cada instância referencia o NOME de uma env var (passwordEnv) cujo valor é a senha.",
+  "_comment": "Template de ~/.capitu/instances.json (ou caminho em CAPITU_INSTANCES_PATH). Copie para ~/.capitu/instances.json e edite. NUNCA coloque senhas/tokens/cookies aqui — referencie o NOME de uma env var. Sem este arquivo, o capitu usa as env vars SAP_* como instância única.",
   "active": "<nome-da-instancia-inicial>",
+  "tools": {
+    "_comment": "Opcional. Liga/desliga tools por nome (true=on, false=off). Tool não listada = habilitada. As tools de instância (capitu*UseInstance etc.) nunca podem ser desligadas.",
+    "capituDocsSearch": true
+  },
   "instances": [
     {
+      "_comment": "Instância de DEV com escrita habilitada, limitada a pacotes Z*/Y*. readOnly:false é obrigatório para permitir writes (default é read-only).",
       "name": "cliente-x-dev",
       "url": "https://<host-do-tenant-x>",
       "user": "<seu-usuario-no-x>",
       "client": "100",
       "language": "PT",
       "edition": "pce",
-      "passwordEnv": "SAP_PASSWORD_CLIENTEX"
+      "passwordEnv": "SAP_PASSWORD_CLIENTEX",
+      "readOnly": false,
+      "allowedPackages": ["$TMP", "Z*", "Y*"]
     },
     {
-      "name": "cliente-y-qas",
+      "_comment": "Produtivo: SEM readOnly declarado → fica read-only por padrão (seguro). Mesmo que CAPITU_ALLOW_WRITES=true, esta instância bloqueia writes até você declarar readOnly:false.",
+      "name": "cliente-y-prd",
       "url": "https://<host-do-tenant-y>",
       "user": "<seu-usuario-no-y>",
       "client": "200",
       "language": "EN",
       "passwordEnv": "SAP_PASSWORD_CLIENTEY"
+    },
+    {
+      "_comment": "Exemplo de autenticação por cookie/SSO (em vez de senha). cookieFile aponta para um arquivo com o header Cookie; ou use cookieString inline.",
+      "name": "cliente-z-sso",
+      "url": "https://<host-do-tenant-z>",
+      "user": "<seu-usuario-no-z>",
+      "client": "100",
+      "authMode": "cookie",
+      "cookieFile": "<HOME>/.capitu/cookies-z.txt"
+    },
+    {
+      "_comment": "Exemplo de autenticação por bearer/OAuth (BTP ABAP Environment). bearerEnv nomeia a env var com o token.",
+      "name": "btp-trial",
+      "url": "https://<seu-host>.abap.<regiao>.hana.ondemand.com",
+      "user": "<seu-usuario-btp>",
+      "authMode": "bearer",
+      "bearerEnv": "BTP_BEARER_TOKEN"
     }
   ]
 }

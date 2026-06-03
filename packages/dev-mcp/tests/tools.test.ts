@@ -64,6 +64,7 @@ afterEach(() => {
 function buildTestContext(opts?: {
   writesAllowed?: boolean;
   allowedPackages?: string[];
+  restrictedByDefault?: boolean;
   permissive?: boolean;
   adtMock?: Partial<CapituAdtClient>;
 }): ServerContext {
@@ -82,11 +83,15 @@ function buildTestContext(opts?: {
     kb: db,
     embeddings: fake,
     adt: { ...defaultAdtStubs, ...opts?.adtMock } as CapituAdtClient,
+    // These gate tests don't switch instances; a stub registry satisfies the type.
+    registry: {} as ServerContext['registry'],
     compliance,
     agent: 'capitu-dev',
+    activeProfileName: 'test-instance',
     writes: {
       allowed: opts?.writesAllowed ?? false,
       allowedPackages: opts?.allowedPackages ?? ['$TMP'],
+      restrictedByDefault: opts?.restrictedByDefault ?? false,
     },
   };
 }
@@ -219,7 +224,7 @@ describe('createObjectTool', () => {
         },
         ctx,
       ),
-    ).rejects.toThrow(/Writes disabled/);
+    ).rejects.toThrow(/disabled by the server-wide ceiling/);
   });
 
   it('refuses when package not allowed', async () => {
@@ -235,7 +240,7 @@ describe('createObjectTool', () => {
         },
         ctx,
       ),
-    ).rejects.toThrow(/blocked by capitu-dev SERVER configuration/);
+    ).rejects.toThrow(/not in the effective allowlist/);
   });
 
   it('builds correct URIs by type and returns hint for next steps', async () => {
@@ -302,7 +307,7 @@ describe('write safety gates', () => {
         },
         ctx,
       ),
-    ).rejects.toThrow(/Writes disabled/);
+    ).rejects.toThrow(/disabled by the server-wide ceiling/);
   });
 
   it('writeObjectTool refuses when package not in allowlist', async () => {
@@ -318,7 +323,7 @@ describe('write safety gates', () => {
         },
         ctx,
       ),
-    ).rejects.toThrow(/blocked by capitu-dev SERVER configuration/);
+    ).rejects.toThrow(/not in the effective allowlist/);
   });
 
   it('writeObjectTool aborts on syntax errors before locking', async () => {
@@ -352,7 +357,7 @@ describe('write safety gates', () => {
     const ctx = buildTestContext({ writesAllowed: false });
     await expect(
       runTool(activateTool, { objectName: 'ZI_X', objectUri: '/sap/x', packageName: '$TMP' }, ctx),
-    ).rejects.toThrow(/Writes disabled/);
+    ).rejects.toThrow(/disabled by the server-wide ceiling/);
   });
 });
 
@@ -1014,5 +1019,69 @@ describe('instance management tools', () => {
     await expect(runTool(useInstanceTool, { name: 'prd', probe: false }, ctx)).rejects.toThrow(
       /Unknown instance "prd"/,
     );
+  });
+});
+
+describe('per-instance write safety (ceiling + restrictive default)', () => {
+  it('blocks writes with a restrictive-default message + step-by-step when profile is silent', async () => {
+    // env allows writes, but the active profile did not declare readOnly:false.
+    const ctx = buildTestContext({ writesAllowed: false, restrictedByDefault: true });
+    await expect(
+      runTool(
+        createObjectTool,
+        {
+          objectType: 'CLAS/OC',
+          name: 'ZCL_X',
+          description: 'x',
+          packageName: '$TMP',
+        },
+        ctx,
+      ),
+    ).rejects.toThrow(/READ-ONLY-BY-DEFAULT/);
+  });
+
+  it('restrictive-default message names the active instance and tells how to opt in', async () => {
+    const ctx = buildTestContext({ writesAllowed: false, restrictedByDefault: true });
+    await expect(
+      runTool(
+        createObjectTool,
+        { objectType: 'CLAS/OC', name: 'ZCL_X', description: 'x', packageName: '$TMP' },
+        ctx,
+      ),
+    ).rejects.toThrow(/instances\.json[\s\S]*readOnly.*false[\s\S]*capituDevUseInstance/);
+  });
+
+  it('allows the write when env permits AND the profile opened it (restrictedByDefault=false)', async () => {
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['$TMP', 'Z*'],
+      restrictedByDefault: false,
+      adtMock: {
+        createObject: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const out = await runTool(
+      createObjectTool,
+      { objectType: 'CLAS/OC', name: 'ZCL_OK', description: 'x', packageName: 'ZSANDBOX' },
+      ctx,
+    );
+    // createObjectTool returns a structured result; just assert it didn't throw
+    // and the package gate accepted ZSANDBOX (matches the Z* profile allowlist).
+    expect(out).toBeDefined();
+  });
+
+  it('package outside the effective allowlist is rejected with the new message', async () => {
+    const ctx = buildTestContext({
+      writesAllowed: true,
+      allowedPackages: ['$TMP'],
+      restrictedByDefault: false,
+    });
+    await expect(
+      runTool(
+        createObjectTool,
+        { objectType: 'CLAS/OC', name: 'ZCL_X', description: 'x', packageName: 'ZPROD' },
+        ctx,
+      ),
+    ).rejects.toThrow(/not in the effective allowlist/);
   });
 });

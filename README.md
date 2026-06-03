@@ -115,7 +115,44 @@ instância ativa **em runtime**, sem editar `.mcp.json` nem reabrir o Claude Cod
 
 A troca vale para os **três** MCPs ao mesmo tempo (docs/dev/spec compartilham o
 estado pela KB), então uma única troca move a visão do ecossistema inteiro. As
-tools existem com os prefixos `capituDocs*`, `capituDev*` e `capituSpec*`.
+tools existem com os prefixos `capituDocs*`, `capituDev*` e `capituSpec*`. Ao
+trocar, o `useInstance` também **sonda as capacidades** do sistema (RAP, abapGit,
+transport, AMDP, UI5, HANA) e mostra o que está disponível — você planeja em vez
+de tentar-e-falhar.
+
+### Segurança por instância (ceiling)
+
+Cada instância pode ter seu próprio gate de escrita, **mais restritivo** que o
+teto global (`CAPITU_ALLOW_WRITES`/`CAPITU_ALLOWED_PACKAGES`) — um perfil só
+aperta, nunca afrouxa:
+
+```jsonc
+{ "name": "dev",  "readOnly": false, "allowedPackages": ["$TMP", "Z*"] },  // escrita liberada (limitada)
+{ "name": "prod" }                                                          // sem readOnly → READ-ONLY por padrão
+```
+
+> ⚠️ **Default seguro:** uma instância que **não** declara `"readOnly": false`
+> fica **read-only**, mesmo com `CAPITU_ALLOW_WRITES=true`. Ao tentar escrever,
+> o capitu explica que está em modo restritivo e dá o passo-a-passo para liberar
+> (editar o perfil + `capituDevUseInstance` de novo — sem reiniciar).
+
+### Autenticação alternativa (cookie / bearer)
+
+Além de senha (`basic`), uma instância pode usar SSO por cookie ou OAuth:
+
+```jsonc
+{ "name": "sso", "authMode": "cookie", "cookieFile": "<HOME>/.capitu/cookies.txt" },
+{ "name": "btp", "authMode": "bearer", "bearerEnv": "BTP_BEARER_TOKEN" }
+```
+
+Cookies/tokens **nunca** ficam no arquivo — `cookieFile` aponta para um arquivo
+local, `bearerEnv` nomeia uma env var.
+
+### Visibilidade de tools
+
+O `instances.json` aceita um mapa `tools` na raiz para desligar ferramentas
+(`{ "capituDevSearch": false }`). Tool não listada fica habilitada; as tools de
+instância nunca podem ser desligadas.
 
 > **Compatibilidade:** sem `instances.json`, o capitu usa as env vars `SAP_*`
 > como uma instância implícita chamada `env` — tudo que já funcionava continua

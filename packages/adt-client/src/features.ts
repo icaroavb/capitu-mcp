@@ -67,7 +67,11 @@ export function classifyFeatureStatus(id: FeatureId, statusCode: number): Featur
     return { id, available: false, reason: 'auth failure (401) — cannot determine availability' };
   }
   if (statusCode === 403) {
-    return { id, available: false, reason: 'forbidden (403) — exists but user lacks authorization' };
+    return {
+      id,
+      available: false,
+      reason: 'forbidden (403) — exists but user lacks authorization',
+    };
   }
   if (statusCode === 404) {
     return { id, available: false, reason: 'not found (404) — ICF service not activated' };
@@ -92,7 +96,9 @@ export async function probeFeatures(client: CapituAdtClient): Promise<FeatureSta
   await client.connect();
   const http = (client.raw as unknown as { httpClient?: RawHttp }).httpClient;
   if (!http || typeof http.request !== 'function') {
-    throw new Error('abap-adt-api: ADTClient.httpClient.request not available for feature probing.');
+    throw new Error(
+      'abap-adt-api: ADTClient.httpClient.request not available for feature probing.',
+    );
   }
   return Promise.all(
     FEATURE_PROBES.map(async (probe) => {
@@ -101,7 +107,8 @@ export async function probeFeatures(client: CapituAdtClient): Promise<FeatureSta
         return classifyFeatureStatus(probe.id, resp.status);
       } catch (err) {
         // abap-adt-api throws on non-2xx with a statusCode; use it when present.
-        const status = (err as { statusCode?: number; status?: number })?.statusCode ??
+        const status =
+          (err as { statusCode?: number; status?: number })?.statusCode ??
           (err as { status?: number })?.status;
         if (typeof status === 'number') return classifyFeatureStatus(probe.id, status);
         return { id: probe.id, available: false, reason: 'network error — cannot reach endpoint' };

@@ -120,8 +120,15 @@ A senha **nunca** fica no `instances.json` — só o nome da variável. O arquiv
 está no `.gitignore` (contém host/usuário). Sem ele, o capitu usa as env vars
 `SAP_*` como instância única.
 
+> ⚠️ **Escrita é read-only por padrão por instância.** Uma instância só permite
+> escrever objetos se o perfil declarar `"readOnly": false` (e `allowedPackages`).
+> É proposital: protege produtivos. Se tentar escrever numa instância sem isso, o
+> capitu avisa e mostra como liberar (sem reiniciar). Ver "Múltiplas instâncias"
+> no [`README.md`](README.md) para os campos de safety, auth (cookie/bearer) e
+> visibilidade de tools.
+
 ## Próximos passos
 
-- Veja [`README.md`](README.md) para entender as 30+ tools disponíveis
+- Veja [`README.md`](README.md) para entender as ~40 tools disponíveis
 - Veja [`ARCHITECTURE.md`](ARCHITECTURE.md) para entender o design dos 3 agentes
 - Teste a primeira tool: `Use capituDevSearch para procurar objetos ZI_* do tipo DDLS`

@@ -13,9 +13,7 @@ const VERSION = '0.0.1';
 /** Instance-management tools are never hidden — hiding them locks the user out. */
 function isAlwaysOnTool(name: string): boolean {
   return (
-    name.endsWith('ListInstances') ||
-    name.endsWith('WhichInstance') ||
-    name.endsWith('UseInstance')
+    name.endsWith('ListInstances') || name.endsWith('WhichInstance') || name.endsWith('UseInstance')
   );
 }
 
@@ -61,7 +59,10 @@ export async function main(): Promise<void> {
       return {
         isError: true,
         content: [
-          { type: 'text', text: `Tool '${tool.name}' is disabled via instances.json "tools" config.` },
+          {
+            type: 'text',
+            text: `Tool '${tool.name}' is disabled via instances.json "tools" config.`,
+          },
         ],
       };
     }

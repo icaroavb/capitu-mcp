@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type ServerContext, assertWritesEnabled } from '../context.js';
+import { assertWritesEnabled } from '../context.js';
 import {
   type IncludeKind,
   MethodSurgeryError,

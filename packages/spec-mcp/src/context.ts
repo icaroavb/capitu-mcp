@@ -48,7 +48,14 @@ export function buildContext(opts: ServerContextOptions = {}): ServerContext {
   const embeddings = opts.embeddings ?? resolveEmbeddingsProvider();
   const compliance = loadComplianceFromEnv();
 
-  const ctx = { kb, embeddings, registry, compliance, agent: 'capitu-spec' as const, toolVisibility };
+  const ctx = {
+    kb,
+    embeddings,
+    registry,
+    compliance,
+    agent: 'capitu-spec' as const,
+    toolVisibility,
+  };
   Object.defineProperty(ctx, 'adt', {
     enumerable: true,
     get: () => registry.active(),
