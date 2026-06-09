@@ -188,4 +188,63 @@ describe('kb', () => {
     expect(hits[0]?.kind).toBe('gotcha');
     db.close();
   });
+
+  it('BM25-only recall ranks by relevance, not recency (FTS5)', async () => {
+    const db = open();
+    // Most relevant to "transport" is inserted FIRST; two unrelated learnings
+    // are inserted AFTER. A recency-ordered search would return the last one;
+    // FTS5/BM25 must return the transport one on top.
+    insertLearning(
+      db,
+      {
+        kind: 'error-fix',
+        problem: 'transport request locked when releasing transport task',
+        solution: 'release the sub-task transport before the request transport',
+        sourceAgent: 'capitu-dev',
+      },
+      [],
+    );
+    insertLearning(
+      db,
+      {
+        kind: 'pattern',
+        problem: 'naming convention for projection views',
+        solution: 'ZP_ prefix matching ZC_',
+        sourceAgent: 'capitu-spec',
+      },
+      [],
+    );
+    insertLearning(
+      db,
+      {
+        kind: 'gotcha',
+        problem: 'class activation needs the include written first',
+        solution: 'write main before includes',
+        sourceAgent: 'capitu-dev',
+      },
+      [],
+    );
+    const hits = searchLearnings(db, [], { queryText: 'transport', limit: 3 });
+    expect(hits.length).toBeGreaterThanOrEqual(1);
+    expect(hits[0]?.problem).toMatch(/transport/i); // relevance wins over recency
+    db.close();
+  });
+
+  it('BM25-only recall tolerates punctuation/quotes in the query (no FTS syntax error)', async () => {
+    const db = open();
+    insertLearning(
+      db,
+      {
+        kind: 'gotcha',
+        problem: 'read_entities( ) must be called inside the handler',
+        solution: 'use the correct RAP handler signature',
+        sourceAgent: 'capitu-dev',
+      },
+      [],
+    );
+    // A raw query with parens/quotes would break a naive FTS MATCH — must not throw.
+    const hits = searchLearnings(db, [], { queryText: 'read_entities( "handler"' });
+    expect(hits.length).toBe(1);
+    db.close();
+  });
 });

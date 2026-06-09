@@ -22,6 +22,18 @@ export {
 } from './features.js';
 export { grepSource, type GrepOptions, type GrepResult } from './grep.js';
 export {
+  normalizeBreakpoint,
+  normalizeDebuggee,
+  normalizeStack,
+  normalizeVariables,
+  normalizeDebugState,
+  type NormalizedBreakpoint,
+  type NormalizedDebuggee,
+  type NormalizedStackFrame,
+  type NormalizedVariable,
+  type NormalizedDebugState,
+} from './debug.js';
+export {
   AdtPackageHierarchyResolver,
   matchesSubtreeRule,
   type PackageHierarchyResolver,

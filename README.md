@@ -127,20 +127,23 @@ $env:CAPITU_EMBEDDINGS = "bm25"
 
 Nesse modo:
 - ✅ Todas as tools continuam funcionando (read, write, create, activate, transport, document)
-- ✅ Learnings continuam sendo gravados e recuperáveis por palavra-chave
+- ✅ Learnings gravados e recuperados por **relevância** (FTS5/BM25 — ranqueado, não só recência)
 - ✅ `capituDocsSearch` faz busca por palavras-chave (FTS5) sobre as docs indexadas
-- ❌ Busca semântica desativada — palavras precisam coincidir literalmente
-- ❌ Recall de learnings é menos esperto (LIKE em vez de similaridade)
+- ❌ Busca semântica desativada — não captura sinônimos (palavras precisam aparecer no texto)
+
+> `bm25` é o padrão e **não baixa nenhum modelo ML** — o `@xenova/transformers`
+> (~45 MB) é uma dependência **opcional**, instalada só se você escolher o modo `local`.
 
 **Quando vale a pena:**
 - Rede corporativa bloqueia HuggingFace e/ou Voyage AI
 - Você quer compartilhar o projeto sem que outros precisem de conta paga
 - Está fazendo experimentos rápidos sem se importar com qualidade semântica
 
-**Para ativar embeddings reais depois,** basta:
-1. Apagar o KB existente: `Remove-Item "$env:USERPROFILE\.capitu\kb.db*"`
-2. Setar `VOYAGE_API_KEY` ou `CAPITU_EMBEDDINGS=local`
-3. Reabrir o Claude Code
+**Para ativar embeddings semânticos depois:**
+1. Apague o KB existente: `Remove-Item "$env:USERPROFILE\.capitu\kb.db*"`
+2. **Voyage** (recomendado): set `VOYAGE_API_KEY` + `CAPITU_EMBEDDINGS=voyage`.
+   **Local**: `npm install @xenova/transformers` (≈45 MB) + `CAPITU_EMBEDDINGS=local`.
+3. Reabra o Claude Code
 
 ## Múltiplas instâncias (uso consultivo)
 
@@ -228,12 +231,17 @@ Para usar o capitu no VS Code, aponte um `.vscode/mcp.json` (ou as settings de M
 seu cliente) para os 3 servidores — o mesmo comando `npx tsx .../server.ts` do
 `.mcp.json` do Claude Code. Detalhes de posicionamento em [ARCHITECTURE.md §12](ARCHITECTURE.md).
 
-## Busca e cirurgia de código
+## Busca e debug de código
 
 - **`capituDevGrep`** — busca **regex dentro do código-fonte** de um objeto e retorna
   só as linhas que casam + contexto (não o fonte inteiro). É o padrão "grep para achar
   a linha, depois leia em volta" — econômico em tokens. Case-insensitive, com fallback
   literal (se você esquecer de escapar `read_entities(`, funciona mesmo assim).
+- **`capituDevDebug`** ⚠️ **experimental** — debugger ABAP: set breakpoints → (dispara o
+  código no SAP) → `listen` → `attach` → inspecionar stack/variáveis → `step`. O `listen`
+  espera o breakpoint bater com timeout (não pendura). **Ainda não validado contra um SAP
+  real** — o ciclo depende de WebSocket/long-poll que varia por release; trate como beta
+  até confirmar no seu sistema.
 
 ## Compliance com SAP API Policy
 
@@ -279,6 +287,7 @@ Gaps que **nenhum** dos ~10 concorrentes MCP SAP em 2026 preenche, e que o capit
 | 7 | Multi-instância dinâmica (perfis + `useInstance`) | ✅ |
 | 8 | Safety por instância (ceiling), feature probing, auth cookie/bearer, tool visibility | ✅ |
 | 9 | `capituDevGrep` (busca regex no fonte), allowlist subtree `ZFOO/**`, coexistência VS Code | ✅ |
-| — | Próximos: class-section surgery, auth `service-key`, debug (ST22/breakpoints), curador automático de learnings | ⏳ |
+| 10 | Recall de learnings por FTS5/BM25, transformers opcional, **debugger ABAP (experimental)** | ✅ |
+| — | Próximos: validar debugger no PCE, class-section surgery, auth `service-key`, curador automático de learnings | ⏳ |
 
-> **Estado atual:** 48 tools (docs 8 · dev 26 · spec 14) em 3 servidores cooperativos, 269 testes verdes.
+> **Estado atual:** 49 tools (docs 8 · dev 27 · spec 14) em 3 servidores cooperativos, 278 testes verdes.

@@ -30,12 +30,42 @@ export function openKb(opts: OpenOptions = {}): DB {
     const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
       | { value: string }
       | undefined;
+    const current = row ? Number(row.value) : 0;
     if (!row) {
       db.prepare("INSERT INTO meta (key, value) VALUES ('schema_version', ?)").run(
+        String(SCHEMA_VERSION),
+      );
+    } else if (current < SCHEMA_VERSION) {
+      runMigrations(db, current);
+      db.prepare("UPDATE meta SET value = ? WHERE key = 'schema_version'").run(
         String(SCHEMA_VERSION),
       );
     }
   }
 
   return db;
+}
+
+/**
+ * Apply forward migrations for a KB opened at an older schema version.
+ *
+ * `SCHEMA_SQL` is `CREATE IF NOT EXISTS`, so new tables already exist by the
+ * time we get here — the job of a migration is the DATA side (e.g. backfilling
+ * an FTS index that a pre-existing table's rows never populated).
+ */
+function runMigrations(db: DB, fromVersion: number): void {
+  // v1 → v2: learnings_fts was added. An existing KB has learnings rows but an
+  // empty FTS index — rebuild it from the external content table. Idempotent.
+  if (fromVersion < 2) {
+    try {
+      db.exec("INSERT INTO learnings_fts(learnings_fts) VALUES('rebuild')");
+    } catch {
+      // If the rebuild command isn't supported for any reason, fall back to a
+      // manual backfill so keyword recall still works on upgraded KBs.
+      db.exec(
+        'INSERT INTO learnings_fts (rowid, problem, solution) ' +
+          'SELECT id, problem, solution FROM learnings',
+      );
+    }
+  }
 }

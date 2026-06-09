@@ -140,8 +140,24 @@ export class LocalEmbeddings implements EmbeddingsProvider {
 
   private async ensurePipeline(): Promise<PipelineFn> {
     if (this.pipeline) return this.pipeline;
-    // Lazy import: avoids loading transformers when tests use FakeEmbeddings.
-    const transformers = await import('@xenova/transformers');
+    // Lazy import: avoids loading transformers when tests use FakeEmbeddings,
+    // AND lets @xenova/transformers be an OPTIONAL dependency — bm25/voyage users
+    // never download its ~45 MB. If 'local' mode is selected without the package
+    // installed, fail with an actionable message instead of a raw module error.
+    let transformers: typeof import('@xenova/transformers');
+    try {
+      transformers = await import('@xenova/transformers');
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') {
+        throw new Error(
+          'CAPITU_EMBEDDINGS=local requires the optional package @xenova/transformers, ' +
+            'which is not installed. Run `npm install @xenova/transformers` (≈45 MB), ' +
+            'or use CAPITU_EMBEDDINGS=bm25 (zero download) or voyage.',
+        );
+      }
+      throw err;
+    }
     if (this.cacheDir) {
       (transformers.env as { cacheDir?: string }).cacheDir = this.cacheDir;
     }

@@ -39,6 +39,12 @@ CREATE INDEX IF NOT EXISTS idx_learnings_kind ON learnings(kind);
 CREATE VIRTUAL TABLE IF NOT EXISTS learnings_vec
   USING vec0(embedding float[${EMBEDDING_DIM}]);
 
+-- Keyword index for learnings recall in bm25 mode (no embeddings). Mirrors
+-- docs_fts: external-content FTS5 over problem+solution, ranked by BM25 so
+-- recall is by relevance, not just recency. Backfilled on schema upgrade.
+CREATE VIRTUAL TABLE IF NOT EXISTS learnings_fts
+  USING fts5(problem, solution, content=learnings, content_rowid=id, tokenize='porter unicode61');
+
 CREATE TABLE IF NOT EXISTS tenant_catalog (
   id INTEGER PRIMARY KEY,
   type TEXT NOT NULL,
@@ -80,4 +86,4 @@ CREATE TABLE IF NOT EXISTS spec_proposals (
 CREATE INDEX IF NOT EXISTS idx_spec_proposals_status ON spec_proposals(status);
 `;
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;

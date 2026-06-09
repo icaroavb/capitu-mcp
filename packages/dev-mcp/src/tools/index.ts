@@ -1,3 +1,4 @@
+import { debugTool } from './debug.js';
 import { documentObjectTool } from './document.js';
 import { editMethodTool } from './edit-method.js';
 import { listInstancesTool, useInstanceTool, whichInstanceTool } from './instances.js';
@@ -45,6 +46,8 @@ export const ALL_TOOLS = [
   editMethodTool,
   // Documentation (1) — exports .docx
   documentObjectTool,
+  // Debugger (1) — EXPERIMENTAL: breakpoints/listen/attach/stack/variables/step
+  debugTool,
   // Transport group (3)
   listTransportsTool,
   transportContentsTool,
@@ -80,6 +83,7 @@ export {
   activateTool,
   editMethodTool,
   documentObjectTool,
+  debugTool,
   listTransportsTool,
   transportContentsTool,
   checkTransportTool,

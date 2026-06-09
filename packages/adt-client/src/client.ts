@@ -1,5 +1,17 @@
 import { ADTClient } from 'abap-adt-api';
 import {
+  type NormalizedBreakpoint,
+  type NormalizedDebugState,
+  type NormalizedDebuggee,
+  type NormalizedStackFrame,
+  type NormalizedVariable,
+  normalizeBreakpoint,
+  normalizeDebugState,
+  normalizeDebuggee,
+  normalizeStack,
+  normalizeVariables,
+} from './debug.js';
+import {
   BDEF_COLLECTION,
   BDEF_CONTENT_TYPE,
   type BdefCreateParams,
@@ -53,6 +65,8 @@ export class CapituAdtClient {
   readonly client?: string;
   readonly language?: string;
   readonly sessionMode: 'stateful' | 'stateless';
+  /** Stable debugger session identifiers, lazily minted on first debug call. */
+  private debugSession?: { terminalId: string; ideId: string; clientId: string };
 
   constructor(opts: AdtConnectionOptions) {
     if (opts.insecureSkipTlsVerify) {
@@ -902,6 +916,147 @@ export class CapituAdtClient {
       tasks,
       allObjects,
     };
+  }
+
+  // ─── Debugger (EXPERIMENTAL — not validated against a live SAP) ──────────
+  //
+  // ABAP debugging over ADT keeps server-side session state and `debuggerListen`
+  // is a long-poll that blocks until a breakpoint is hit. These methods are thin,
+  // normalized wrappers over abap-adt-api's debugger*; `debugListen` adds a hard
+  // timeout so it never hangs an MCP turn. The whole surface is gated under the
+  // compliance 'debug' category (Q33-endorsed: debugging your own code).
+
+  /** Mint (once) and return the stable debugger session identifiers. */
+  private ensureDebugSession(): { terminalId: string; ideId: string; clientId: string } {
+    if (!this.debugSession) {
+      const rnd = () =>
+        (globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random()}`).toUpperCase();
+      this.debugSession = { terminalId: rnd(), ideId: rnd(), clientId: rnd() };
+    }
+    return this.debugSession;
+  }
+
+  /** Set breakpoints (by source URI + line) for the current debug session. */
+  async debugSetBreakpoints(
+    uri: string,
+    lines: number[],
+    user?: string,
+  ): Promise<NormalizedBreakpoint[]> {
+    await this.connect();
+    const s = this.ensureDebugSession();
+    const bps = lines.map((l) => `${uri}#start=${l}`);
+    try {
+      const raw = await this.inner.debuggerSetBreakpoints(
+        'user',
+        s.terminalId,
+        s.ideId,
+        s.clientId,
+        bps,
+        user ?? this.user,
+      );
+      return raw.map(normalizeBreakpoint);
+    } catch (err) {
+      throw wrapAdtError(err, `debugSetBreakpoints(${uri})`);
+    }
+  }
+
+  /**
+   * Listen for a debuggee to hit a breakpoint, bounded by `timeoutSeconds`
+   * (default 20, hard cap 55 — below typical MCP/HTTP idle limits). Returns the
+   * stopped program if one is hit, or `null` on timeout (no error — just "not
+   * yet"). The underlying long-poll is abandoned on timeout.
+   */
+  async debugListen(timeoutSeconds = 20, user?: string): Promise<NormalizedDebuggee | null> {
+    await this.connect();
+    const s = this.ensureDebugSession();
+    const capped = Math.min(Math.max(timeoutSeconds, 1), 55);
+    const timeout = new Promise<'timeout'>((resolve) =>
+      setTimeout(() => resolve('timeout'), capped * 1000),
+    );
+    try {
+      const result = await Promise.race([
+        this.inner.debuggerListen('user', s.terminalId, s.ideId, user ?? this.user),
+        timeout,
+      ]);
+      if (result === 'timeout' || !result) return null;
+      // debuggerListen returns Debuggee | DebugListenerError | undefined.
+      if ('DEBUGGEE_ID' in result) return normalizeDebuggee(result);
+      // A listener error (e.g. conflict) — surface as a thrown, actionable error.
+      throw new Error(
+        `debugListen: listener error — ${(result as { message?: { text?: string } }).message?.text ?? 'conflict'}`,
+      );
+    } catch (err) {
+      throw wrapAdtError(err, 'debugListen');
+    }
+  }
+
+  /** Attach to a stopped debuggee (from debugListen) and read its state. */
+  async debugAttach(debuggeeId: string, user?: string): Promise<NormalizedDebugState> {
+    await this.connect();
+    try {
+      const raw = await this.inner.debuggerAttach('user', debuggeeId, user ?? this.user);
+      return normalizeDebugState(raw);
+    } catch (err) {
+      throw wrapAdtError(err, `debugAttach(${debuggeeId})`);
+    }
+  }
+
+  /** Current call stack of the attached debuggee. */
+  async debugStackTrace(): Promise<NormalizedStackFrame[]> {
+    await this.connect();
+    try {
+      return normalizeStack(await this.inner.debuggerStackTrace());
+    } catch (err) {
+      throw wrapAdtError(err, 'debugStackTrace');
+    }
+  }
+
+  /** Read variables by id (pass top-level names, or child ids to expand). */
+  async debugVariables(parents: string[]): Promise<NormalizedVariable[]> {
+    await this.connect();
+    try {
+      return normalizeVariables(await this.inner.debuggerVariables(parents));
+    } catch (err) {
+      throw wrapAdtError(err, 'debugVariables');
+    }
+  }
+
+  /** Step the attached debuggee. Most steps take no URI; run/jump-to-line do. */
+  async debugStep(
+    stepType:
+      | 'stepInto'
+      | 'stepOver'
+      | 'stepReturn'
+      | 'stepContinue'
+      | 'stepRunToLine'
+      | 'stepJumpToLine'
+      | 'terminateDebuggee',
+    uri?: string,
+  ): Promise<NormalizedDebugState> {
+    await this.connect();
+    if ((stepType === 'stepRunToLine' || stepType === 'stepJumpToLine') && !uri) {
+      throw new Error(`debugStep(${stepType}) requires a target uri (line to run/jump to).`);
+    }
+    try {
+      const raw =
+        stepType === 'stepRunToLine' || stepType === 'stepJumpToLine'
+          ? await this.inner.debuggerStep(stepType, uri as string)
+          : await this.inner.debuggerStep(stepType);
+      return normalizeDebugState(raw);
+    } catch (err) {
+      throw wrapAdtError(err, `debugStep(${stepType})`);
+    }
+  }
+
+  /** Drop the debug listener (cleanup). Best-effort. */
+  async debugDeleteListener(user?: string): Promise<void> {
+    if (!this.debugSession) return;
+    const s = this.debugSession;
+    try {
+      await this.inner.debuggerDeleteListener('user', s.terminalId, s.ideId, user ?? this.user);
+    } catch (err) {
+      throw wrapAdtError(err, 'debugDeleteListener');
+    }
   }
 
   /** Direct access to underlying client for advanced or unsupported calls. */
