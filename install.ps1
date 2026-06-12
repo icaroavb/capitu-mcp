@@ -63,6 +63,33 @@ try {
     exit 1
 }
 
+# Multi-Node guard. capitu depende de better-sqlite3 (módulo NATIVO compilado
+# para um ABI específico do Node). Se você tem mais de um Node instalado (ex:
+# um Node do nvm + o Node global que o Claude usa), o `npm install` precisa
+# rodar com o MESMO Node que o Claude lança os servidores — senão o binário
+# nasce para o ABI errado e os 3 servidores quebram no boot. Detectamos o
+# divergência cedo e oferecemos alinhar.
+$claudeNode = "C:\Program Files\nodejs\node.exe"
+if (Test-Path $claudeNode) {
+    $claudeNodeVersion = (& $claudeNode --version) 2>$null
+    $currentNodePath = (Get-Command node -ErrorAction SilentlyContinue).Source
+    if ($claudeNodeVersion -and $claudeNodeVersion -ne $nodeVersion) {
+        Write-Host ""
+        Write-Host "  ⚠️  Node do PATH ($nodeVersion) ≠ Node em Program Files ($claudeNodeVersion)." -ForegroundColor Yellow
+        Write-Host "     O Claude normalmente usa o de Program Files. Instalar com um Node" -ForegroundColor Gray
+        Write-Host "     diferente faz o better-sqlite3 (nativo) quebrar no boot dos servidores." -ForegroundColor Gray
+        $align = Read-Host "Usar o Node de Program Files para o install? (S/n)"
+        if ($align -ne 'n') {
+            $env:Path = "C:\Program Files\nodejs;$env:Path"
+            $nodeVersion = (node --version) 2>$null
+            Write-Host "  ✓ Alinhado: install vai usar Node $nodeVersion" -ForegroundColor Green
+        } else {
+            Write-Host "  → Mantendo Node $nodeVersion. Se os servidores quebrarem, rode:" -ForegroundColor Gray
+            Write-Host "      `$env:Path = `"C:\Program Files\nodejs;`$env:Path`"; npm run rebuild:native" -ForegroundColor Gray
+        }
+    }
+}
+
 # Claude Code CLI — não bloqueia o setup, mas é necessário para USAR o capitu.
 # O passo final ('claude') falha sem ele, então avisamos cedo.
 try {
@@ -216,6 +243,23 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Write-Host "  ✓ Dependências instaladas" -ForegroundColor Green
+
+# Verifica que o módulo nativo (better-sqlite3) carrega no Node atual. O
+# postinstall já roda isso, mas confirmamos aqui e oferecemos o rebuild se o
+# binário tiver nascido para o ABI errado (multi-Node).
+& node scripts/check-native.mjs
+& node -e "require('better-sqlite3')" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "  ⚠️  O módulo nativo não carregou. Tentando rebuild com o Node atual..." -ForegroundColor Yellow
+    npm run rebuild:native
+    & node -e "require('better-sqlite3')" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  ✗ Ainda não carrega. Veja SETUP.md → Troubleshooting (better-sqlite3)." -ForegroundColor Red
+    } else {
+        Write-Host "  ✓ Módulo nativo OK após rebuild" -ForegroundColor Green
+    }
+}
 
 # ----- Optional smoke test --------------------------------------------------
 

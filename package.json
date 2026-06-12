@@ -16,7 +16,10 @@
     "smoke:adt": "tsx scripts/smoke-test-adt.ts",
     "smoke:adt:v2": "tsx scripts/smoke-test-adt-v2.ts",
     "integration:adt": "tsx scripts/integration-test-adt.ts",
-    "warmup:embeddings": "tsx scripts/warmup-embeddings.ts"
+    "warmup:embeddings": "tsx scripts/warmup-embeddings.ts",
+    "check:native": "node scripts/check-native.mjs",
+    "rebuild:native": "npm rebuild better-sqlite3 --build-from-source=false || npm rebuild better-sqlite3",
+    "postinstall": "node scripts/check-native.mjs"
   },
   "engines": {
     "node": ">=22"
