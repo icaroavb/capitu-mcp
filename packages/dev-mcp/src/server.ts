@@ -100,9 +100,20 @@ export async function main(): Promise<void> {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  const writesNote = ctx.writes.allowed
-    ? `writes ENABLED (allowlist: ${ctx.writes.allowedPackages.join(', ')})`
-    : 'writes DISABLED (set CAPITU_ALLOW_WRITES=true to enable)';
+  // The banner peeks at the write gate, which resolves the ACTIVE instance —
+  // and that throws when no instance is configured yet. A missing config must
+  // not kill the server (docs/spec stay up in that state; tools surface the
+  // configuration error per call), so degrade the banner instead of crashing.
+  let writesNote: string;
+  try {
+    writesNote = ctx.writes.allowed
+      ? `writes ENABLED (allowlist: ${ctx.writes.allowedPackages.join(', ')})`
+      : 'writes DISABLED (set CAPITU_ALLOW_WRITES=true to enable)';
+  } catch (err) {
+    writesNote = `no SAP instance configured yet — tools will error until one is set up (${
+      err instanceof Error ? err.message : String(err)
+    })`;
+  }
   process.stderr.write(
     `[capitu-dev] v${VERSION} ready (${ALL_TOOLS.length} tools, ${writesNote})\n`,
   );

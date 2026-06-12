@@ -68,6 +68,12 @@ export {
   type InstanceAuthMode,
   type SapEditionHint,
 } from './instances.js';
+export {
+  readUserScopeEnv,
+  parseRegQueryValue,
+  clearUserScopeEnvCache,
+  envValue,
+} from './winenv.js';
 export type {
   DocChunk,
   StoredDoc,

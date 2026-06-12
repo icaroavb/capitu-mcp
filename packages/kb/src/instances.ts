@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Database } from 'better-sqlite3';
+import { envValue } from './winenv.js';
 
 /**
  * Named SAP instance profiles for consultant-style multi-system use.
@@ -103,7 +104,7 @@ export function isToolEnabled(name: string, tools?: Record<string, boolean>): bo
 
 /** Resolve the instances.json path: explicit env override, else ~/.capitu/instances.json. */
 export function instancesPath(env: NodeJS.ProcessEnv = process.env): string {
-  const override = env.CAPITU_INSTANCES_PATH;
+  const override = envValue(env, 'CAPITU_INSTANCES_PATH');
   if (override?.trim()) return override.trim();
   return join(homedir(), '.capitu', 'instances.json');
 }
@@ -149,9 +150,10 @@ export function loadInstanceProfiles(env: NodeJS.ProcessEnv = process.env): Inst
     return { instances, active: parsedActive, tools, source: 'file', path };
   }
 
-  // Fallback: synthesize one instance from legacy env vars.
-  const url = env.SAP_URL;
-  const user = env.SAP_USER;
+  // Fallback: synthesize one instance from legacy env vars (with the Windows
+  // User-scope fallback — MCP clients sanitize the process environment).
+  const url = envValue(env, 'SAP_URL');
+  const user = envValue(env, 'SAP_USER');
   if (url && user) {
     return {
       instances: [
@@ -159,8 +161,8 @@ export function loadInstanceProfiles(env: NodeJS.ProcessEnv = process.env): Inst
           name: 'env',
           url,
           user,
-          client: env.SAP_CLIENT,
-          language: env.SAP_LANGUAGE,
+          client: envValue(env, 'SAP_CLIENT'),
+          language: envValue(env, 'SAP_LANGUAGE'),
           passwordEnv: 'SAP_PASSWORD',
         },
       ],
@@ -274,7 +276,7 @@ export function resolvePassword(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const varName = profile.passwordEnv ?? 'SAP_PASSWORD';
-  const value = env[varName];
+  const value = envValue(env, varName);
   if (!value) {
     throw new Error(
       `Password for instance "${profile.name}" not found: environment variable ` +
@@ -325,7 +327,7 @@ export function resolveBearer(
     );
   }
   return async () => {
-    const token = env[varName];
+    const token = envValue(env, varName);
     if (!token) {
       throw new Error(
         `Bearer token for instance "${profile.name}" not found: environment variable ` +

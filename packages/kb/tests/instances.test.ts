@@ -276,3 +276,101 @@ describe('tool visibility map', () => {
     expect(isToolEnabled('anything', undefined)).toBe(true);
   });
 });
+
+describe('Windows User-scope env fallback (winenv)', () => {
+  it('parseRegQueryValue extracts REG_SZ and REG_EXPAND_SZ values', async () => {
+    const { parseRegQueryValue } = await import('../src/winenv.js');
+    const regSz = [
+      '',
+      'HKEY_CURRENT_USEREnvironment',
+      '    SAP_URL    REG_SZ    https://host.example.com:8100',
+      '',
+    ].join('\r\n');
+    expect(parseRegQueryValue(regSz)).toBe('https://host.example.com:8100');
+
+    const expandSz = [
+      'HKEY_CURRENT_USEREnvironment',
+      '    MY_PATH    REG_EXPAND_SZ    %USERPROFILE%\bin',
+    ].join('\r\n');
+    expect(parseRegQueryValue(expandSz)).toBe('%USERPROFILE%\bin');
+
+    // Values with internal spaces survive (regex captures to end of line).
+    const spaced = '    NOTE    REG_SZ    a value with spaces  ';
+    expect(parseRegQueryValue(spaced)).toBe('a value with spaces');
+  });
+
+  it('parseRegQueryValue returns undefined for misses and empty values', async () => {
+    const { parseRegQueryValue } = await import('../src/winenv.js');
+    expect(
+      parseRegQueryValue(
+        'ERROR: The system was unable to find the specified registry key or value.',
+      ),
+    ).toBeUndefined();
+    expect(parseRegQueryValue('')).toBeUndefined();
+    expect(parseRegQueryValue('    EMPTY    REG_SZ    ')).toBeUndefined();
+  });
+
+  it('crafted env objects NEVER observe the host registry (test isolation)', () => {
+    // envWith() builds a fresh object (≠ process.env), so the User-scope
+    // fallback must stay inert: no file + no SAP_URL ⇒ empty, even on a dev
+    // machine whose registry HAS SAP_URL. This pins the identity guard.
+    const res = loadInstanceProfiles(envWith({ CAPITU_INSTANCES_PATH: join(dir, 'absent.json') }));
+    expect(res.source).toBe('empty');
+    expect(res.instances).toHaveLength(0);
+  });
+
+  it('envValue prefers a direct env value over the registry fallback', async () => {
+    const { envValue } = await import('../src/winenv.js');
+    expect(envValue(envWith({ CAPITU_KB_PATH: '/explicit/path.db' }), 'CAPITU_KB_PATH')).toBe(
+      '/explicit/path.db',
+    );
+  });
+
+  it('envValue on a crafted (non-process.env) object never hits the registry', async () => {
+    const { envValue } = await import('../src/winenv.js');
+    // Same identity guard as loadInstanceProfiles above, exercised directly:
+    // a var absent from a crafted env resolves to undefined, never the
+    // developer machine's registry — regardless of what's actually set there.
+    expect(envValue(envWith({}), 'CAPITU_KB_PATH')).toBeUndefined();
+    expect(envValue(envWith({}), 'CAPITU_COMPLIANCE_MODE')).toBeUndefined();
+    expect(envValue(envWith({}), 'CAPITU_EMBEDDINGS')).toBeUndefined();
+    expect(envValue(envWith({}), 'CAPITU_ALLOW_WRITES')).toBeUndefined();
+    expect(envValue(envWith({}), 'CAPITU_ALLOWED_PACKAGES')).toBeUndefined();
+  });
+});
+
+describe('envValue-backed config readers (Desktop-mirroring)', () => {
+  it('defaultDbPath: explicit CAPITU_KB_PATH wins, else ~/.capitu/kb.db', async () => {
+    const { defaultDbPath } = await import('../src/index.js');
+    expect(defaultDbPath(envWith({ CAPITU_KB_PATH: '/custom/kb.db' }))).toBe('/custom/kb.db');
+    expect(defaultDbPath(envWith({}))).toMatch(/\.capitu[\\/]kb\.db$/);
+  });
+
+  it('loadComplianceFromEnv: reads CAPITU_COMPLIANCE_MODE and the risk ack from a crafted env', async () => {
+    const { loadComplianceFromEnv } = await import('../src/index.js');
+    expect(loadComplianceFromEnv(envWith({})).mode).toBe('strict');
+    expect(loadComplianceFromEnv(envWith({ CAPITU_COMPLIANCE_MODE: 'permissive' })).mode).toBe(
+      'permissive',
+    );
+    expect(
+      loadComplianceFromEnv(envWith({ CAPITU_I_UNDERSTAND_API_POLICY_RISK: 'yes' }))
+        .riskAcknowledged,
+    ).toBe(true);
+  });
+
+  it('resolveEmbeddingsProvider: CAPITU_EMBEDDINGS selects the provider from a crafted env', async () => {
+    const { resolveEmbeddingsProvider, NullEmbeddings, VoyageEmbeddings } = await import(
+      '../src/index.js'
+    );
+    expect(resolveEmbeddingsProvider(envWith({}))).toBeInstanceOf(NullEmbeddings);
+    expect(resolveEmbeddingsProvider(envWith({ CAPITU_EMBEDDINGS: 'bm25' }))).toBeInstanceOf(
+      NullEmbeddings,
+    );
+    expect(resolveEmbeddingsProvider(envWith({ CAPITU_EMBEDDINGS: 'voyage' }))).toBeInstanceOf(
+      VoyageEmbeddings,
+    );
+    expect(resolveEmbeddingsProvider(envWith({ VOYAGE_API_KEY: 'x' }))).toBeInstanceOf(
+      VoyageEmbeddings,
+    );
+  });
+});

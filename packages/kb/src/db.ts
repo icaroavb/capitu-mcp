@@ -4,14 +4,15 @@ import { dirname, join } from 'node:path';
 import Database, { type Database as DB } from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.js';
+import { envValue } from './winenv.js';
 
 export interface OpenOptions {
   path?: string;
   readonly?: boolean;
 }
 
-export function defaultDbPath(): string {
-  return process.env.CAPITU_KB_PATH ?? join(homedir(), '.capitu', 'kb.db');
+export function defaultDbPath(env: NodeJS.ProcessEnv = process.env): string {
+  return envValue(env, 'CAPITU_KB_PATH') ?? join(homedir(), '.capitu', 'kb.db');
 }
 
 export function openKb(opts: OpenOptions = {}): DB {

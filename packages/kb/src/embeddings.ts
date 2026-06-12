@@ -1,4 +1,5 @@
 import { EMBEDDING_DIM } from './schema.js';
+import { envValue } from './winenv.js';
 
 export interface EmbeddingsProvider {
   embed(texts: string[]): Promise<number[][]>;
@@ -97,11 +98,11 @@ export class NullEmbeddings implements EmbeddingsProvider {
 export function resolveEmbeddingsProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): EmbeddingsProvider {
-  const choice = env.CAPITU_EMBEDDINGS?.toLowerCase();
+  const choice = envValue(env, 'CAPITU_EMBEDDINGS')?.toLowerCase();
   if (choice === 'voyage') return new VoyageEmbeddings();
   if (choice === 'local') return new LocalEmbeddings();
   if (choice === 'bm25' || choice === 'none' || choice === 'null') return new NullEmbeddings();
-  if (env.VOYAGE_API_KEY) return new VoyageEmbeddings();
+  if (envValue(env, 'VOYAGE_API_KEY')) return new VoyageEmbeddings();
   return new NullEmbeddings();
 }
 

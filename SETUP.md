@@ -83,6 +83,8 @@ Aprove os 3 servidores quando solicitado.
 
 | Problema | Causa provável | Fix |
 |----------|---------------|-----|
+| `Server disconnected` + `NODE_MODULE_VERSION` no log | better-sqlite3 compilado para outro Node | Veja **"better-sqlite3 / NODE_MODULE_VERSION"** abaixo |
+| `No SAP instances configured` (mas você setou as env vars!) | Cliente MCP lança o servidor com ambiente sanitizado | Veja **"Env vars não chegam ao servidor"** abaixo |
 | `Server disconnected` | Variável de ambiente faltando | Veja `[Environment]::GetEnvironmentVariable("SAP_PASSWORD", "User").Length` |
 | `401 Unauthorized` | Senha errada ou conta bloqueada | Teste no SAP GUI primeiro |
 | `403 stateful session required` | Bug raro do MCP | Reabra Claude Code |
@@ -90,14 +92,105 @@ Aprove os 3 servidores quando solicitado.
 | `corrNr could not be found` | Pacote exige transport | Use `capituDevListTransports` para escolher uma TR aberta |
 | Tools não aparecem em `/mcp` | Claude Code carregou config antiga | Feche e abra novamente o Claude Code |
 
+### better-sqlite3 / NODE_MODULE_VERSION
+
+Se o log do servidor mostra algo como:
+
+```
+The module '...better_sqlite3.node' was compiled against a different Node.js
+version using NODE_MODULE_VERSION 108. This version of Node.js requires
+NODE_MODULE_VERSION 137.
+```
+
+**Causa:** capitu usa `better-sqlite3`, um módulo **nativo** compilado para uma
+versão específica do Node (o "ABI", ou `NODE_MODULE_VERSION`). Se você tem mais
+de um Node na máquina — tipicamente um Node do **nvm** + o Node global em
+`C:\Program Files\nodejs` — o `npm install` pode ter compilado o módulo para um
+ABI, enquanto o Claude lança os servidores com **outro** Node. Aí o binário não
+carrega e os 3 servidores caem no boot.
+
+| ABI (`NODE_MODULE_VERSION`) | Versão do Node |
+|---|---|
+| 108 | Node 18 |
+| 115 | Node 20 |
+| 127 | Node 22 |
+| 137 | Node 24 |
+
+**Fix:** reinstale/rebuilde o módulo nativo com o **mesmo Node que o Claude usa**
+(quase sempre o de `C:\Program Files\nodejs`). Em um PowerShell:
+
+```powershell
+cd <caminho-do-capitu-mcp>
+$env:Path = "C:\Program Files\nodejs;$env:Path"   # põe o Node do Claude na frente
+node --version                                     # confirme qual Node está ativo
+npm run rebuild:native                             # baixa o binário pré-compilado p/ esse ABI
+node -e "require('better-sqlite3')"                # silêncio = OK
+```
+
+Depois reabra o Claude e rode `/mcp` — os 3 servidores devem conectar.
+
+> 💡 **Por que acontece de novo:** se você rodar `npm install` de um shell cujo
+> Node padrão é diferente (ex.: um terminal onde o `nvm` deixou o Node 18 como
+> default), o módulo é recompilado para o ABI errado e o problema volta. Rode
+> sempre o install com o Node de `Program Files` na frente do PATH. O capitu já
+> tem um `postinstall` (`npm run check:native`) que **detecta** esse descasamento
+> e te diz exatamente o que fazer.
+
+### Env vars não chegam ao servidor (Claude Desktop)
+
+Sintoma: você salvou `SAP_URL`/`SAP_PASSWORD` como variáveis persistentes do
+Windows, elas aparecem no PowerShell, **mas o servidor reclama** com
+`No SAP instances configured` ou `SAP_URL is missing`.
+
+**Causa:** alguns clientes MCP — o **Claude Desktop** em particular — lançam os
+servidores stdio com um ambiente **sanitizado**: um PATH próprio + somente o que
+estiver no bloco `env` da config do servidor. As variáveis User do Windows
+existem no registro, mas **não são repassadas** ao processo.
+
+**Como o capitu lida:** no Windows, quando uma variável esperada não está no
+ambiente do processo, o capitu lê o **User scope diretamente do registro**
+(`HKCU\Environment`) — exatamente onde o `install.ps1`/`SETUP.md` mandam salvar.
+Ou seja: salvou como variável persistente User → funciona em qualquer cliente,
+sem pôr senha em arquivo nenhum.
+
+Isso vale para: `SAP_URL`, `SAP_USER`, `SAP_CLIENT`, `SAP_LANGUAGE`,
+`CAPITU_INSTANCES_PATH`, `CAPITU_KB_PATH`, `CAPITU_COMPLIANCE_MODE`,
+`CAPITU_I_UNDERSTAND_API_POLICY_RISK`, `CAPITU_EMBEDDINGS`, `VOYAGE_API_KEY`,
+`CAPITU_ALLOW_WRITES`, `CAPITU_ALLOWED_PACKAGES`, a senha de cada perfil
+(`passwordEnv`) e o token bearer (`bearerEnv`).
+
+> No Claude Code (CLI) isso raramente é necessário — o `.mcp.json` tem um bloco
+> `env` que é repassado. Mas o fallback cobre os dois mundos: salvar como
+> variável persistente User funciona tanto no CLI quanto no Desktop, sem
+> precisar manter dois arquivos de config sincronizados manualmente.
+
 ## Habilitando escrita ABAP
 
-Se você não habilitou escrita no instalador e quer fazer depois, edite `.mcp.json`, no servidor `capitu-dev`:
+Duas formas — escolha conforme o cliente que você usa:
+
+**Só Claude Code (CLI):** edite `.mcp.json`, no servidor `capitu-dev`:
 
 - `CAPITU_ALLOW_WRITES`: `"true"`
 - `CAPITU_ALLOWED_PACKAGES`: `"$TMP,<seu-pacote>"` (CSV, suporta wildcard `Z*`)
 
 Reinicie o Claude Code para aplicar.
+
+**Claude Code + Claude Desktop (ou só Desktop):** o `claude_desktop_config.json`
+não tem bloco `env` por servidor, então edite `.mcp.json` **não ajuda** o
+Desktop. Salve as mesmas duas chaves como variáveis persistentes do Windows
+User (mesmo mecanismo da seção anterior) — assim os dois clientes leem o mesmo
+valor:
+
+```powershell
+[Environment]::SetEnvironmentVariable("CAPITU_ALLOW_WRITES", "true", "User")
+[Environment]::SetEnvironmentVariable("CAPITU_ALLOWED_PACKAGES", "$TMP,<seu-pacote>", "User")
+```
+
+Reinicie o Claude Code e o Claude Desktop para aplicar. Se `.mcp.json` também
+definir essas chaves, ele tem prioridade só no CLI (o bloco `env` do
+`.mcp.json` é repassado direto, sem passar pelo registro) — para evitar
+divergência entre os dois clientes, prefira manter `.mcp.json` sem essas duas
+chaves e usar só a env var User.
 
 > ⚠️ Mantenha `$TMP` como único pacote permitido até estar confiante. Erro em um prompt pode criar/alterar objetos no SAP.
 

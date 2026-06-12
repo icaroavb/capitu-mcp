@@ -18,6 +18,8 @@
  *   business data, substitution for business APIs.
  */
 
+import { envValue } from './winenv.js';
+
 export type ComplianceMode = 'strict' | 'permissive';
 
 export type ToolCategory =
@@ -69,9 +71,9 @@ export class CompliancePolicyViolation extends Error {
 }
 
 export function loadComplianceFromEnv(env: NodeJS.ProcessEnv = process.env): ComplianceContext {
-  const raw = (env.CAPITU_COMPLIANCE_MODE ?? 'strict').toLowerCase();
+  const raw = (envValue(env, 'CAPITU_COMPLIANCE_MODE') ?? 'strict').toLowerCase();
   const mode: ComplianceMode = raw === 'permissive' ? 'permissive' : 'strict';
-  const riskAcknowledged = env.CAPITU_I_UNDERSTAND_API_POLICY_RISK === 'yes';
+  const riskAcknowledged = envValue(env, 'CAPITU_I_UNDERSTAND_API_POLICY_RISK') === 'yes';
   return { mode, riskAcknowledged };
 }
 

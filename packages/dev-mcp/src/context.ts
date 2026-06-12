@@ -9,6 +9,7 @@ import {
 import {
   type ComplianceContext,
   type EmbeddingsProvider,
+  envValue,
   getActiveInstance,
   loadComplianceFromEnv,
   loadInstanceProfiles,
@@ -74,10 +75,10 @@ interface EnvCeiling {
   allowedPackages: string[];
 }
 
-function readEnvCeiling(): EnvCeiling {
+function readEnvCeiling(env: NodeJS.ProcessEnv = process.env): EnvCeiling {
   return {
-    allowWrites: process.env.CAPITU_ALLOW_WRITES === 'true',
-    allowedPackages: (process.env.CAPITU_ALLOWED_PACKAGES ?? '$TMP')
+    allowWrites: envValue(env, 'CAPITU_ALLOW_WRITES') === 'true',
+    allowedPackages: (envValue(env, 'CAPITU_ALLOWED_PACKAGES') ?? '$TMP')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),

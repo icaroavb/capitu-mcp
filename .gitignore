@@ -13,6 +13,10 @@ Thumbs.db
 .idea/
 coverage/
 
+# tsx temp cache — created with a literal "undefined" dir name when
+# launched under certain sanitized environments (boot-test debris).
+undefined/
+
 # Claude Code per-project settings — may contain tenant URLs / users
 .claude/settings.local.json
 .claude/settings.json
